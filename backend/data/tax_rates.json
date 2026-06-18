@@ -1,0 +1,92 @@
+{
+  "US": {
+    "currency": "USD",
+    "note": "Federal income tax only. State taxes vary — California adds ~9.3% above $66k. Not included here.",
+    "brackets": [
+      { "min": 0,      "max": 11600,  "rate": 0.10 },
+      { "min": 11600,  "max": 47150,  "rate": 0.12 },
+      { "min": 47150,  "max": 100525, "rate": 0.22 },
+      { "min": 100525, "max": 191950, "rate": 0.24 },
+      { "min": 191950, "max": 243725, "rate": 0.32 },
+      { "min": 243725, "max": 609350, "rate": 0.35 },
+      { "min": 609350, "max": 9999999, "rate": 0.37 }
+    ],
+    "social_security_rate": 0.062,
+    "medicare_rate": 0.0145,
+    "source_url": "https://www.irs.gov/newsroom/irs-provides-tax-inflation-adjustments-for-tax-year-2024",
+    "last_verified": "2026-05-01"
+  },
+  "UK": {
+    "currency": "GBP",
+    "note": "England/Wales rates. Includes National Insurance (Class 1 employee).",
+    "brackets": [
+      { "min": 0,      "max": 12570,  "rate": 0.00 },
+      { "min": 12570,  "max": 50270,  "rate": 0.20 },
+      { "min": 50270,  "max": 125140, "rate": 0.40 },
+      { "min": 125140, "max": 9999999, "rate": 0.45 }
+    ],
+    "national_insurance_rate": 0.08,
+    "national_insurance_threshold": 12570,
+    "source_url": "https://www.gov.uk/income-tax-rates",
+    "last_verified": "2026-05-01"
+  },
+  "Canada": {
+    "currency": "CAD",
+    "note": "Federal rates only. Provincial rates add 5–25% on top depending on province.",
+    "brackets": [
+      { "min": 0,      "max": 55867,  "rate": 0.15 },
+      { "min": 55867,  "max": 111733, "rate": 0.205 },
+      { "min": 111733, "max": 154906, "rate": 0.26 },
+      { "min": 154906, "max": 220000, "rate": 0.29 },
+      { "min": 220000, "max": 9999999, "rate": 0.33 }
+    ],
+    "cpp_rate": 0.0595,
+    "cpp_max_earnings": 68500,
+    "source_url": "https://www.canada.ca/en/revenue-agency/services/tax/individuals/frequently-asked-questions-individuals/canadian-income-tax-rates-individuals-current-previous-years.html",
+    "last_verified": "2026-05-01"
+  },
+  "Australia": {
+    "currency": "AUD",
+    "note": "Resident rates. Medicare Levy of 2% applies above the low-income threshold.",
+    "brackets": [
+      { "min": 0,      "max": 18200,  "rate": 0.00 },
+      { "min": 18200,  "max": 45000,  "rate": 0.19 },
+      { "min": 45000,  "max": 120000, "rate": 0.325 },
+      { "min": 120000, "max": 180000, "rate": 0.37 },
+      { "min": 180000, "max": 9999999, "rate": 0.45 }
+    ],
+    "medicare_levy_rate": 0.02,
+    "source_url": "https://www.ato.gov.au/tax-rates-and-codes/tax-rates-for-individuals",
+    "last_verified": "2026-05-01"
+  },
+  "Germany": {
+    "currency": "EUR",
+    "note": "Progressive rate from 14–45%. Solidarity surcharge (Solidaritätszuschlag) largely abolished for most earners. Approximate effective rates shown.",
+    "brackets": [
+      { "min": 0,      "max": 11604,  "rate": 0.00 },
+      { "min": 11604,  "max": 17006,  "rate": 0.14 },
+      { "min": 17006,  "max": 66761,  "rate": 0.24 },
+      { "min": 66761,  "max": 277826, "rate": 0.42 },
+      { "min": 277826, "max": 9999999, "rate": 0.45 }
+    ],
+    "social_contributions_rate": 0.2005,
+    "social_contributions_note": "Approximate employee share: health (~7.3%), pension (~9.3%), unemployment (~1.3%), nursing care (~1.7%)",
+    "source_url": "https://www.bundesfinanzministerium.de/Content/DE/Standardartikel/Themen/Steuern/Steuerarten/Einkommensteuer/2024-einkommensteuertarif.html",
+    "last_verified": "2026-05-01"
+  },
+  "France": {
+    "currency": "EUR",
+    "note": "Income tax (impôt sur le revenu) brackets. Social contributions (cotisations salariales) add ~22% on gross.",
+    "brackets": [
+      { "min": 0,      "max": 11294,  "rate": 0.00 },
+      { "min": 11294,  "max": 28797,  "rate": 0.11 },
+      { "min": 28797,  "max": 82341,  "rate": 0.30 },
+      { "min": 82341,  "max": 177106, "rate": 0.41 },
+      { "min": 177106, "max": 9999999, "rate": 0.45 }
+    ],
+    "social_contributions_rate": 0.22,
+    "social_contributions_note": "Approximate employee social charges: health, pension, unemployment combined",
+    "source_url": "https://www.impots.gouv.fr/particulier/questions/quelles-sont-les-tranches-dimposition",
+    "last_verified": "2026-05-01"
+  }
+}

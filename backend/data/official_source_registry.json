@@ -1,0 +1,23 @@
+{
+  "US": [
+    "https://travel.state.gov",
+    "https://www.uscis.gov"
+  ],
+  "UK": [
+    "https://www.gov.uk/browse/visas-immigration"
+  ],
+  "Canada": [
+    "https://www.canada.ca/en/immigration-refugees-citizenship.html"
+  ],
+  "Australia": [
+    "https://immi.homeaffairs.gov.au"
+  ],
+  "Germany": [
+    "https://www.make-it-in-germany.com",
+    "https://www.bamf.de"
+  ],
+  "France": [
+    "https://france-visas.gouv.fr",
+    "https://www.service-public.fr"
+  ]
+}
