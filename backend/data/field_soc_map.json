@@ -1,0 +1,12 @@
+{
+  "Computer Science": { "bls_soc": "15-1252", "label": "Software Developers" },
+  "Data Science": { "bls_soc": "15-2051", "label": "Data Scientists" },
+  "Electrical Engineering": { "bls_soc": "17-2071", "label": "Electrical Engineers" },
+  "Mechanical Engineering": { "bls_soc": "17-2141", "label": "Mechanical Engineers" },
+  "Finance": { "bls_soc": "13-2051", "label": "Financial Analysts" },
+  "Business Administration": { "bls_soc": "11-1021", "label": "General and Operations Managers" },
+  "Biomedical Engineering": { "bls_soc": "17-2031", "label": "Biomedical Engineers" },
+  "Chemical Engineering": { "bls_soc": "17-2041", "label": "Chemical Engineers" },
+  "Civil Engineering": { "bls_soc": "17-2051", "label": "Civil Engineers" },
+  "Economics": { "bls_soc": "19-3011", "label": "Economists" }
+}
