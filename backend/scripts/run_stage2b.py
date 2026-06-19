@@ -24,10 +24,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 
 from google.genai import types
 from google.genai import errors as genai_errors
+
+# Windows consoles default to cp1252, which chokes on chars like U+2011 (non-breaking
+# hyphen) that show up in model output. Force UTF-8 and never crash on a stray glyph.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 from backend.config import settings
 from backend.models.intake_models import ParsedProfile
@@ -108,11 +116,11 @@ def inspect_grounding(profile: ParsedProfile) -> set[str]:
         web = getattr(c, "web", None)
         uri = getattr(web, "uri", "") if web else ""
         title = getattr(web, "title", "") if web else ""
-        dom = io._domain_of(uri)
-        in_reg = any(dom == a or dom.endswith("." + a) for a in approved)
-        flag = "IN-REGISTRY" if in_reg else "off-list/redirect"
-        print(f"    [{flag:>17}] {title or '(no title)'}")
-        print(f"                        {uri}")
+        # Real domain lives in the title; the uri is a vertexaisearch redirect.
+        dom = io._domain_from_title(title) or io._domain_of(uri)
+        in_reg = bool(dom) and any(dom == a or dom.endswith("." + a) for a in approved)
+        flag = "IN-REGISTRY" if in_reg else "off-list"
+        print(f"    [{flag:>11}] {dom or '(unknown)':<28} {title or '(no title)'}")
 
     print(f"\n  Normalized grounded domains: {sorted(grounded) or '(none)'}")
     print("\n  --- raw research text returned by Call #1 ---\n")

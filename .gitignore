@@ -24,3 +24,6 @@ frontend/.vite/
 # OS
 .DS_Store
 Thumbs.db
+
+# Internal pitch notes (not for submission repo)
+story.md

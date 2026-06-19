@@ -2,11 +2,49 @@
 
 fetch(profile) -> RouteAndOutlook
 
+────────────────────────────────────────────────────────────────────────────
+IN PLAIN WORDS (read this first)
+────────────────────────────────────────────────────────────────────────────
+This file figures out, for two countries, (1) which work visa fits the user and
+(2) what the immigration climate is like — using AI, but without letting the AI
+invent facts or cite random websites. It works in three steps:
+
+  Step 1 — ASK GEMINI TO RESEARCH (with live Google Search)
+      We give Gemini the user's profile and ask it to look up the visa + climate
+      for each country. We tell it to search only our trusted government sites
+      (from official_source_registry.json) using "site:" filters. It returns
+      plain text. Important: that "site:" instruction is a *nudge*, not a lock —
+      Gemini can still pull other sites, so we don't trust it blindly (see Step 3).
+
+  Step 2 — ASK GEMINI TO TIDY IT INTO JSON (no search)
+      A second call takes that messy text and reshapes it into a strict JSON
+      shape (the RouteAndOutlook schema). No searching here — just formatting.
+
+  Step 3 — CHECK THE SOURCES OURSELVES (plain Python, no AI)
+      Gemini also hands back a list of the sites it *actually* opened during
+      Step 1 (the "grounding metadata"). For every source Gemini claims it used,
+      we ask two questions:
+          a) Is this site on our trusted list?           (registry check)
+          b) Did Gemini actually open it in Step 1?       (grounding check)
+      - Yes to both  → "verified": keep the confidence as-is.
+      - On the list but we can't confirm it opened it → "claimed": lower
+        confidence one notch (high→medium, medium→low).
+      - Not on the trusted list at all → "unapproved": force confidence to "low".
+      We never swap in a nicer-looking URL to hide a problem — that would be
+      faking a citation. We'd rather show low confidence honestly.
+
+The point: the AI does the reading, but a dumb, predictable Python check decides
+how much to trust each answer. That's the whole safety story.
+────────────────────────────────────────────────────────────────────────────
+
 Call #1 — Gemini + Google Search grounding:
     Researches the applicable work visa and immigration climate for each
-    country from approved government sources. Grounding metadata
-    (grounding_chunks[].web.uri) is captured as the model-independent
-    record of which URLs Google Search actually retrieved.
+    country from approved government sources. Searches are steered toward the
+    registry domains via site: filters (steering only — the google_search tool
+    has no hard domain allowlist). Grounding metadata is captured as the
+    model-independent record of which sources were actually retrieved; the real
+    domain is read from grounding_chunks[].web.title, because .uri is an opaque
+    vertexaisearch redirect that masks the true host.
 
 Call #2 — Gemini, no search, response_schema=RouteAndOutlook, temperature=0:
     Structures the raw research text into the RouteAndOutlook schema.
@@ -17,7 +55,10 @@ After Call #2 — deterministic source verification:
       (a) official_source_registry.json — is this an approved domain?
       (b) Call #1 grounding metadata    — was this domain actually retrieved?
     Three outcomes: verified / claimed-not-grounded / unapproved.
-    Unapproved → routing_confidence / confidence downgraded to "low".
+      - verified   → keep the model's stated confidence.
+      - claimed    → in registry but not seen in grounding → confidence down one
+                     notch (high→medium, medium→low).
+      - unapproved → not in registry → confidence forced to "low".
     No URL substitution is ever performed — replacing an unverifiable URL
     with a different one fabricates a citation, harming the responsible-AI
     story.
@@ -61,12 +102,37 @@ _SLUG_PREFIX: dict[str, str] = {
     "Australia": "au", "Germany": "de", "France": "fr",
 }
 
+# One-notch confidence downgrade, applied when a source is in the registry but
+# could not be confirmed in the grounding metadata ("claimed" verdict).
+_DOWNGRADE_ONE: dict[str, str] = {"high": "medium", "medium": "low", "low": "low"}
+
 
 def _client() -> genai.Client:
     return genai.Client(api_key=settings.gemini_api_key)
 
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
+
+def _registry_domains(country: str) -> list[str]:
+    """Unique registry domains for a country (deduped, order-stable)."""
+    seen: list[str] = []
+    for url in _SOURCE_REGISTRY.get(country, []):
+        d = urlparse(url).netloc.removeprefix("www.")
+        if d and d not in seen:
+            seen.append(d)
+    return seen
+
+
+def _site_filter(country: str) -> str:
+    """Google `site:` clause biasing search toward this country's registry domains.
+
+    NOTE: the google_search tool has no hard domain allowlist — Gemini writes its
+    own queries, so this is steering, not enforcement. The deterministic source
+    verification after Call #2 is what actually enforces the trusted-source rule.
+    """
+    domains = _registry_domains(country)
+    return " OR ".join(f"site:{d}" for d in domains)
+
 
 def _build_research_prompt(profile: ParsedProfile) -> str:
     """Call #1 prompt — instructs Gemini to search approved government sources.
@@ -78,6 +144,8 @@ def _build_research_prompt(profile: ParsedProfile) -> str:
     country_a, country_b = profile.country_a, profile.country_b
     sources_a = ", ".join(_SOURCE_REGISTRY.get(country_a, []))
     sources_b = ", ".join(_SOURCE_REGISTRY.get(country_b, []))
+    site_a = _site_filter(country_a)
+    site_b = _site_filter(country_b)
 
     return f"""You are a visa routing researcher. A user is deciding between working in {country_a} and {country_b}.
 
@@ -90,6 +158,11 @@ Your task: research and summarise the following for EACH country. Use Google Sea
 
 For {country_a} — only extract from: {sources_a}
 For {country_b} — only extract from: {sources_b}
+
+SEARCH SCOPE — restrict every Google Search query to the approved domains using site: operators. Append the matching filter to each query:
+- When researching {country_a}, append: ({site_a})
+- When researching {country_b}, append: ({site_b})
+Do not rely on sources outside these domains. If the approved domains do not answer a question, say so rather than substituting an unofficial source.
 
 For each country, find:
 
@@ -152,23 +225,46 @@ Do not invent information not present in the research. Use null for optional fie
 
 # ── Grounding metadata extraction ─────────────────────────────────────────────
 
-def _extract_grounded_domains(resp) -> set[str]:
-    """Normalised domains from Call #1 grounding metadata.
+def _domain_from_title(title: str) -> str:
+    """Pull a domain-like token out of a grounding chunk title.
 
-    grounding_chunks[].web.uri are the URLs Google Search actually retrieved —
-    the only model-independent evidence of what was consulted. Used as ground
-    truth in source verification (not the model's self-reported source_url).
+    For the Gemini google_search tool, grounding_chunks[].web.title is typically
+    the source's display domain (e.g. "make-it-in-germany.com"), while .uri is an
+    opaque vertexaisearch redirect wrapper that hides the real domain. So the title
+    is where the true source survives. Returns "" if no domain-like token is found
+    (e.g. a prose page title with no domain).
+    """
+    m = re.search(r"\b([a-z0-9][a-z0-9\-]*(?:\.[a-z0-9\-]+)+)\b", (title or "").lower())
+    return m.group(1).removeprefix("www.") if m else ""
+
+
+def _extract_grounded_domains(resp) -> set[str]:
+    """Normalised domains Google Search actually retrieved in Call #1.
+
+    The model-independent evidence of what was consulted. Two sources per chunk:
+      - web.title — usually the real display domain (PRIMARY signal).
+      - web.uri   — almost always a vertexaisearch.cloud.google.com redirect that
+                    masks the real domain, so it's only used when it happens to be
+                    a real, non-redirect host.
+    Used as ground truth in source verification, never the model's self-reported
+    source_url.
     """
     domains: set[str] = set()
     try:
         chunks = resp.candidates[0].grounding_metadata.grounding_chunks or []
-        for chunk in chunks:
-            if chunk.web and chunk.web.uri:
-                domain = urlparse(chunk.web.uri).netloc.removeprefix("www.")
-                if domain:
-                    domains.add(domain)
     except (AttributeError, IndexError, TypeError):
-        pass
+        chunks = []
+
+    for chunk in chunks:
+        web = getattr(chunk, "web", None)
+        if not web:
+            continue
+        title_domain = _domain_from_title(getattr(web, "title", "") or "")
+        if title_domain:
+            domains.add(title_domain)
+        uri_domain = urlparse(getattr(web, "uri", "") or "").netloc.removeprefix("www.")
+        if uri_domain and "vertexaisearch" not in uri_domain and "." in uri_domain:
+            domains.add(uri_domain)
     return domains
 
 
@@ -248,15 +344,30 @@ def _validate_sources(
     v_outlook_a = check(result.country_a_outlook.source_url, approved_a, "country_a_outlook")
     v_outlook_b = check(result.country_b_outlook.source_url, approved_b, "country_b_outlook")
 
+    def confidence_for(verdict: str, current: str) -> str:
+        """Map a verification verdict onto a confidence level.
+
+        verified   → keep the model's stated confidence (evidence backs the claim)
+        claimed    → nudge down one notch (in registry, but retrieval unconfirmed)
+        unapproved → "low" (source not trusted at all)
+        """
+        if verdict == "verified":
+            return current
+        if verdict == "claimed":
+            return _DOWNGRADE_ONE.get(current, "low")
+        return "low"
+
     def fix_route(route: VisaRoute, verdict: str) -> VisaRoute:
-        if verdict == "unapproved":
-            return VisaRoute(**{**route.model_dump(), "routing_confidence": "low"})
-        return route
+        new_conf = confidence_for(verdict, route.routing_confidence)
+        if new_conf == route.routing_confidence:
+            return route
+        return VisaRoute(**{**route.model_dump(), "routing_confidence": new_conf})
 
     def fix_outlook(outlook: ImmigrationOutlook, verdict: str) -> ImmigrationOutlook:
-        if verdict == "unapproved":
-            return ImmigrationOutlook(**{**outlook.model_dump(), "confidence": "low"})
-        return outlook
+        new_conf = confidence_for(verdict, outlook.confidence)
+        if new_conf == outlook.confidence:
+            return outlook
+        return ImmigrationOutlook(**{**outlook.model_dump(), "confidence": new_conf})
 
     return RouteAndOutlook(
         visa_route_a=fix_route(result.visa_route_a, v_route_a),
