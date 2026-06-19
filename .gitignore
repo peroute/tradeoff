@@ -19,6 +19,7 @@ build/
 node_modules/
 frontend/dist/
 frontend/.vite/
+*.tsbuildinfo
 
 # OS
 .DS_Store
