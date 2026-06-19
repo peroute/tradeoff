@@ -206,6 +206,7 @@ This is the one place where AI-sourced signal (`trend_direction` from Stage 2b) 
 - Build `IntakePage`
 
 ### Day 2 — June 19: AI Pipeline + Validation
+- Implement intake_models.py (CompareRequest) — unblock app boot
 - Implement `immigration_outlook.py`: Stage 2b Gemini + Search, full `RouteAndOutlook` schema
 - Implement `reasoning_step.py`: `_flatten_bundle_keys()`, `_build_prompt()`, `generate_insights()`, `validate_output()` (all 6 rules), `validate_batch()`
 - Implement `sacrifice_diff.py`: 5 dimensions, `visa_stability_score` formula
@@ -213,7 +214,6 @@ This is the one place where AI-sourced signal (`trend_direction` from Stage 2b) 
 - End-to-end test: India / CS / US vs France → real data, 2 AI calls confirmed
 
 ### Day 3 — June 20–21: Dashboard + Polish + Submit
-- Implement intake_models.py (CompareRequest) — unblock app boot
 - Build all dashboard components (WagePanel, VisaPanel, OutlookCard, WhatIfList grouped by scenario_type, SacrificeMap)
 - `HumanBoundaryBanner` pinned, always visible
 - `SafeFallbackNotice` visible (not collapsible)
