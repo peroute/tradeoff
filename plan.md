@@ -241,6 +241,7 @@ This is the one place where AI-sourced signal (`trend_direction` from Stage 2b) 
 - Build `IntakePage` with optional city fields for each destination
 
 ### Day 2 — June 19: AI Pipeline + Validation
+- Implement intake_models.py (CompareRequest) — unblock app boot
 - Implement `immigration_outlook.py`: Stage 2b Gemini + Search, full `RouteAndOutlook` schema
 - Implement `reasoning_step.py`: `_flatten_bundle_keys()`, `_build_prompt()`, `generate_insights()`, `validate_output()` (all 6 rules), `validate_batch()`
 - Implement `sacrifice_diff.py`: 5 dimensions, `visa_stability_score` formula
