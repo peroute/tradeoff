@@ -15,22 +15,24 @@ No specific job offers required. The system builds the picture from market data.
 ## Pipeline (Architecture B — locked)
 
 ```
-1. Intake          (deterministic) — parse user profile
+1. Intake           (deterministic) — parse user profile
         ↓
-2b. Route + Outlook (AI call #1)  — Gemini + Google Search
-        ↓                            resolves visa route from official sources
-2a. Fact Assembly  (deterministic) — wages (BLS metro/OECD), CoL (cost_of_living.json
-        ↓                            or OECD PPP fallback), tax calc, visa_rules.json
-3.  Reasoning      (AI call #2)   — Gemini structured output, 7 typed insights
+2b-1. Route + Outlook research (AI call #1) — Gemini + Google Search grounding
+        ↓                                      raw text from approved gov sources
+2b-2. Route + Outlook structure (AI call #2) — Gemini, no search
+        ↓                                       response_schema=RouteAndOutlook
+2a. Fact Assembly   (deterministic) — wages (BLS metro/OECD), CoL (cost_of_living.json
+        ↓                             or OECD PPP fallback), tax calc, visa_rules.json
+3.  Reasoning       (AI call #3)   — Gemini structured output, 7 typed insights
         ↓
-    Validate       (deterministic) — 6 rules, SAFE_FALLBACK on any failure
+    Validate        (deterministic) — 6 rules, SAFE_FALLBACK on any failure
         ↓
-4.  Sacrifice Diff (deterministic) — 5-dimension cross-country comparison
+4.  Sacrifice Diff  (deterministic) — 5-dimension cross-country comparison
         ↓
-5.  Output         (dashboard)
+5.  Output          (dashboard)
 ```
 
-**Two LLM calls only.** Everything else is deterministic. Stage 2b runs before 2a because the AI-resolved visa slug is needed for curated enrichment lookup.
+**Three LLM calls.** Stage 2b is split into two sub-calls because the Google Gen AI SDK cannot reliably combine Search grounding with structured JSON output (response_schema) in a single request. Call #1 retrieves grounded research as raw text; call #2 structures that text into the RouteAndOutlook schema. Everything else is deterministic. Stage 2b runs before 2a because the AI-resolved visa slug is needed for curated enrichment lookup.
 
 ---
 

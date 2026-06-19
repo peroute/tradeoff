@@ -10,19 +10,20 @@ A country-destination comparator for international students and recent grads. Th
 
 US, UK, Canada, Australia, Germany, France. Chosen by actual international-student/grad enrollment volume, not arbitrary. Wage/cost-of-living comparisons work for any country via live APIs (see below) — only the curated visa-rules table is capped to these six. If a user enters a seventh country, the system should degrade gracefully (show wage/cost-of-living, flag visa specifics as "not yet modeled") rather than fabricate or silently fail.
 
-## Architecture (locked — this is "architecture B," chosen over a 3-call chained version; do not collapse stages or add a third LLM call without discussing first)
+## Architecture (locked — this is "architecture B," 3 LLM calls; do not add more without discussing first)
 
 ```
 Intake (deterministic)
-  -> Route + Outlook (AI call #1: Gemini + Google Search grounding, structured output)
+  -> Route + Outlook research (AI call #1: Gemini + Google Search grounding, raw text)
+  -> Route + Outlook structure (AI call #2: Gemini no search, response_schema=RouteAndOutlook)
   -> Fact assembly (deterministic: live APIs + visa_rules.json enrichment using AI-resolved slug)
-  -> What-if reasoning (AI call #2: Gemini, reasoning_step.py)
+  -> What-if reasoning (AI call #3: Gemini no search, reasoning_step.py)
   -> Validate (deterministic: reasoning_step.py validate_output(), routes failures to SAFE_FALLBACK)
   -> Sacrifice map diff (deterministic, cross-option comparison)
   -> Output (dashboard)
 ```
 
-Stage 2b (Route + Outlook) runs before fact assembly because the AI-resolved visa slug is required for the `visa_rules.json` enrichment lookup. Only stages 2b and 3 call a model. This asymmetry is the answer to "why does this need AI" in the judging rubric — don't let it erode by routing intake, fact assembly, or the diff step through a model.
+Stage 2b is split into two sub-calls (call #1 + #2) because Google Search grounding and structured JSON output cannot be reliably combined in one SDK call. Call #1 retrieves grounded research from approved government sources as raw text. Call #2 takes that text and enforces the RouteAndOutlook schema via response_schema — no search, just structuring. This split was chosen on June 19 for reliability over the original single-call design. The visa slug resolved in call #2 is required for the `visa_rules.json` enrichment lookup before fact assembly can run.
 
 ## Contracts — match these exactly, don't improvise field names
 
@@ -144,7 +145,7 @@ Index is on the Numbeo scale (NYC = 100). Values are read manually from Numbeo's
 ## Hard constraints
 
 - No LangChain, no MCP — the brief's own kickoff Q&A says judges score justification, not architecture-by-name; both would add surface area with no judging benefit here.
-- No third LLM call. If a new feature seems to need one, that's a signal to push it into the deterministic diff/output stage instead.
+- Three LLM calls total (calls #1 and #2 are both Stage 2b sub-calls; call #3 is Stage 3). Do not add a fourth without discussing first.
 - Curated visa facts are never look-up targets for the search-grounded call — only the outlook/trend stage touches live search.
 - The AI never states which option to choose. That's the human-in-the-loop boundary — keep it enforced in the output stage, not just mentioned in prose. `HumanBoundaryBanner` must be pinned, always visible, contrasting background.
 
