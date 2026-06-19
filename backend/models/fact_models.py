@@ -58,6 +58,32 @@ class CostData(BaseModel):
     retrieved_at: str = Field(default_factory=_utc_now_iso)
 
 
+class TaxBreakdown(BaseModel):
+    """Net take-home derived from one country's curated tax brackets.
+
+    Produced by compute_net_takehome(gross_annual, country) over the curated
+    tax_rates.json. All figures are in the destination country's national
+    currency — the same currency WageData carries, by design, so the gross can be
+    fed straight into the brackets. These are HARD facts (never LLM-looked-up); an
+    unmodeled 7th country yields None rather than a fabricated figure.
+
+    `note` carries the table's scope caveat (e.g. US = federal only, no state) so
+    the dashboard can disclose what the deduction does and doesn't cover.
+    """
+
+    country: str
+    currency: str
+    gross_annual: float
+    income_tax: float                         # progressive bracket total
+    social_contributions: float               # SS+Medicare / NI / CPP / levy / combined, per country
+    total_deductions: float                   # income_tax + social_contributions
+    net_annual: float                         # gross_annual - total_deductions
+    effective_rate: float                     # total_deductions / gross_annual (0.0 when gross <= 0)
+    source_url: Optional[str] = None
+    last_verified: Optional[str] = None       # YYYY-MM-DD, curated
+    note: Optional[str] = None                # table scope caveat
+
+
 class VisaRouteResolved(BaseModel):
     """One country's AI-resolved visa route — the parsed `visa_route_a`/`_b`
     object from Stage 2b's RouteAndOutlook (Gemini + Google Search grounding).
