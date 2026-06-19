@@ -8,7 +8,9 @@ A country-destination comparator for international students and recent grads. Th
 
 ## Country scope (locked — do not add countries without updating this file)
 
-US, UK, Canada, Australia, Germany, France. Chosen by actual international-student/grad enrollment volume, not arbitrary. Wage/cost-of-living comparisons work for any country via live APIs (see below) — only the curated visa-rules table is capped to these six. If a user enters a seventh country, the system should degrade gracefully (show wage/cost-of-living, flag visa specifics as "not yet modeled") rather than fabricate or silently fail.
+US, UK, Canada, Australia, Germany, France. Chosen by actual international-student/grad enrollment volume, not arbitrary. Wage/cost-of-living comparisons work for any country via live APIs (see below) — only the curated visa-rules table is capped to these six.
+
+**Scope enforcement (no in-prompt 7th-country degradation needed):** The 6-country scope is enforced in two layers, so an unsupported country can never reach the pipeline. (1) The intake UI offers only these six via a fixed dropdown. (2) `country_a`/`country_b` are typed as `SupportedCountry = Literal["US", "UK", "Canada", "Australia", "Germany", "France"]` on `CompareRequest` (the API boundary) and `ParsedProfile` in `intake_models.py` — so a 7th country is rejected with a `422` before Stage 2b runs. Stage 2b therefore assumes a valid, supported country and does not implement graceful degradation for unmodeled countries. If you ever widen scope, update the `Literal`, the dropdown, and the curated JSON tables together.
 
 ## Architecture (locked — this is "architecture B," 3 LLM calls; do not add more without discussing first)
 
