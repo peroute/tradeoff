@@ -1,5 +1,6 @@
 import type { CareerStage, CompareRequest } from '../../types'
 import { CAREER_STAGES } from '../../types'
+import { errorClass, inputClass, labelClass } from '../shared/formStyles'
 
 export type FormErrors = Partial<Record<keyof CompareRequest, string>>
 
@@ -10,11 +11,6 @@ interface ProfileFormProps {
   errors: FormErrors
   onChange: (field: keyof CompareRequest, value: string) => void
 }
-
-const labelClass = 'block text-sm font-medium text-gray-700'
-const inputClass =
-  'mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
-const errorClass = 'mt-1 text-sm text-red-600'
 
 export default function ProfileForm({
   citizenship,

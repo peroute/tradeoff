@@ -1,3 +1,137 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    /* Render native controls (selects, scrollbars, dropdowns) in dark to match the theme. */
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-paper font-sans text-ink antialiased;
+  }
+
+  ::selection {
+    @apply bg-path-a/30 text-ink;
+  }
+
+  h1,
+  h2 {
+    @apply font-display;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-path-a ring-offset-2 ring-offset-paper;
+  }
+}
+
+/* Loading screen — two paths converging on a single decision node. */
+@keyframes draw-path {
+  from {
+    stroke-dashoffset: var(--path-length);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* A data packet travelling down a path toward the convergence node. */
+@keyframes travel-a {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  82% {
+    opacity: 1;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes meet-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+/* Concentric rings emitted from the convergence node. */
+@keyframes ring-emit {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+@keyframes glyph-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.path-draw {
+  stroke-dasharray: var(--path-length);
+  animation: draw-path 2.4s ease-in-out infinite alternate;
+}
+
+.packet {
+  offset-rotate: 0deg;
+  animation: travel-a 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.meet-point {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: meet-pulse 2.4s ease-in-out infinite;
+}
+
+.meet-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ring-emit 2.4s ease-out infinite;
+}
+
+.glyph-float {
+  animation: glyph-float 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .path-draw {
+    stroke-dasharray: none;
+    animation: none;
+  }
+  .packet,
+  .meet-ring,
+  .glyph-float {
+    animation: none;
+  }
+  .packet {
+    opacity: 0;
+  }
+  .meet-ring {
+    opacity: 0;
+  }
+  .meet-point {
+    animation: none;
+    opacity: 1;
+  }
+}

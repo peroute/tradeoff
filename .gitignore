@@ -5,6 +5,7 @@ __pycache__/
 .venv/
 venv/
 env/
+.env
 *.egg-info/
 dist/
 build/
@@ -27,3 +28,5 @@ Thumbs.db
 
 # Internal pitch notes (not for submission repo)
 story.md
+# Local Claude skills (installed locally, not tracked)
+.claude/skills/
