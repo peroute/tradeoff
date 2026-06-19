@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from backend.data_sources import bls, numbeo, oecd, tax, visa_rules
+from backend.data_sources import bls, numbeo, oecd, tax, visa_rules, wherenext, worldbank
 from backend.models.ai_models import VisaRoute
 from backend.models.fact_models import VisaFact
 from backend.models.fact_models import WageData as SourceWageData
@@ -81,13 +81,57 @@ def _fetch_wage(profile: ParsedProfile, country: str) -> WageData:
 
 
 def _to_col_data(country: str) -> ColData:
-    city = numbeo._COUNTRY_DEFAULT_CITY.get(country, country)
-    cd = numbeo.fetch_cost_of_living(city, country)
+    """National cost-of-living index (US = 100), resolved across live sources.
+
+    Resolution order (each degrades gracefully to the next):
+      1. World Bank PPP price-level index — primary, live, primary-source.
+      2. WhereNext national cost index — live secondary / cross-check.
+      3. Curated static table (numbeo) — last-resort offline fallback, flagged.
+    All three are national figures, so col_source is always "national_ppp"; a live
+    *city* tier isn't available for the locked countries (see wherenext.py).
+    """
+    wb = worldbank.fetch_national_col(country)
+    if not wb.is_fallback:
+        return _col_data_from(
+            wb,
+            is_fallback=False,
+            note="National price-level index (World Bank, PPP-based, US=100); not city-specific.",
+        )
+
+    wn = wherenext.fetch_national_col(country)
+    if not wn.is_fallback:
+        return _col_data_from(
+            wn,
+            is_fallback=False,
+            note=(
+                "National cost index (WhereNext, US=100; aggregates World Bank ICP / "
+                "Eurostat). World Bank live source was unavailable."
+            ),
+        )
+
+    # Both live sources failed — curated static fallback (NYC=100 proxy).
+    default_city = numbeo._COUNTRY_DEFAULT_CITY.get(country, country)
+    nb = numbeo.fetch_cost_of_living(default_city, country)
+    return _col_data_from(
+        nb,
+        is_fallback=True,
+        note="Curated fallback index (live cost-of-living sources unavailable).",
+        source="Curated (fallback)",
+    )
+
+
+def _col_data_from(
+    cd, *, is_fallback: bool, note: str, source: str | None = None
+) -> ColData:
+    """Map a source CostData onto the national ColData DTO."""
     return ColData(
-        city=cd.city,
+        city=None,  # national figure, not city-specific
         col_index=cd.cost_of_living_index,
-        monthly_cost_usd=None,  # indices carry no USD monthly figure
-        source="Numbeo",
+        monthly_cost_usd=cd.monthly_cost_usd,
+        source=source or cd.source,
+        col_source="national_ppp",
+        is_fallback=is_fallback,
+        precision_note=note,
     )
 
 
