@@ -1,3 +1,71 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    /* Render native controls (selects, scrollbars, dropdowns) in dark to match the theme. */
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-paper font-sans text-ink antialiased;
+  }
+
+  ::selection {
+    @apply bg-path-a/30 text-ink;
+  }
+
+  h1,
+  h2 {
+    @apply font-display;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-path-a ring-offset-2 ring-offset-paper;
+  }
+}
+
+/* Loading screen — two paths converging. */
+@keyframes draw-path {
+  from {
+    stroke-dashoffset: var(--path-length);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes meet-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+.path-draw {
+  stroke-dasharray: var(--path-length);
+  animation: draw-path 1.8s ease-in-out infinite alternate;
+}
+
+.meet-point {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: meet-pulse 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .path-draw {
+    stroke-dasharray: none;
+    animation: none;
+  }
+  .meet-point {
+    animation: none;
+    opacity: 1;
+  }
+}

@@ -27,6 +27,16 @@ export const SUPPORTED_COUNTRIES: SupportedCountry[] = [
   'France',
 ]
 
+// Passport-style code + full name per destination, used for the A/B path identity.
+export const COUNTRY_META: Record<SupportedCountry, { code: string; name: string }> = {
+  US: { code: 'US', name: 'United States' },
+  UK: { code: 'GB', name: 'United Kingdom' },
+  Canada: { code: 'CA', name: 'Canada' },
+  Australia: { code: 'AU', name: 'Australia' },
+  Germany: { code: 'DE', name: 'Germany' },
+  France: { code: 'FR', name: 'France' },
+}
+
 export const CAREER_STAGES: { value: CareerStage; label: string }[] = [
   { value: 'new_grad', label: 'New grad' },
   { value: 'early_career', label: 'Early career' },
