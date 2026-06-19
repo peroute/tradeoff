@@ -105,7 +105,7 @@ export default function GeneratingScreen({ countryA, countryB }: GeneratingScree
         <circle
           r="3.5"
           className="packet fill-path-b"
-          style={{ offsetPath: `path('${PATH_B}')`, animationDelay: '0.4s' }}
+          style={{ offsetPath: `path('${PATH_B}')` }}
         />
 
         {/* Convergence node with emitted rings */}
