@@ -25,3 +25,6 @@ frontend/.vite/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local Claude skills (installed locally, not tracked)
+.claude/skills/
