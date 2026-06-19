@@ -1,4 +1,9 @@
-"""Numbeo cost-of-living client (MOCK data, live-shaped).
+"""Numbeo cost-of-living client (CURATED FALLBACK, live-shaped).
+
+Cost of living is now served live by worldbank.py (primary) and wherenext.py
+(secondary). This module is the LAST-RESORT fallback used by
+fact_assembly._to_col_data() only when BOTH live sources fail — it keeps the
+offline demo alive and never presents a curated guess as a live reading.
 
 Numbeo's API is a PAID subscription we don't hold. So this module serves
 curated MOCK payloads shaped EXACTLY like Numbeo's /api/indices JSON, then runs

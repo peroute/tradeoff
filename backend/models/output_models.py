@@ -43,10 +43,13 @@ class WageData(BaseModel):
 
 
 class ColData(BaseModel):
-    city: str | None
-    col_index: float | None
+    city: str | None                          # None for national figures (col_source="national_ppp")
+    col_index: float | None                   # US/NYC = 100 baseline
     monthly_cost_usd: float | None
-    source: str = "Numbeo"
+    source: str = "World Bank"
+    col_source: Literal["city", "national_ppp"] = "national_ppp"
+    is_fallback: bool = False                 # True when both live sources failed and a curated value was used
+    precision_note: str | None = None         # tier + provenance disclosure (parallels WageData.precision_note)
 
 
 class TaxData(BaseModel):

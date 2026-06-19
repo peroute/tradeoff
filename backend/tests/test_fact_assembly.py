@@ -7,12 +7,28 @@ mock (no network) and tax is pure, so both run for real here.
 
 import pytest
 
-from backend.data_sources import bls, oecd, tax
+from backend.data_sources import bls, oecd, tax, wherenext, worldbank
 from backend.models.ai_models import VisaRoute
+from backend.models.fact_models import CostData
 from backend.models.fact_models import WageData as SourceWageData
 from backend.models.intake_models import ParsedProfile
 from backend.models.output_models import CountryBundle
 from backend.pipeline import fact_assembly
+
+
+def _col(index=80.0, source="World Bank", is_fallback=False, monthly=None) -> CostData:
+    return CostData(
+        city="X", country="X", currency="USD",
+        cost_of_living_index=index, monthly_cost_usd=monthly,
+        source=source, is_mock=False, is_fallback=is_fallback,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _stub_worldbank(monkeypatch):
+    """Keep assemble() offline+deterministic: World Bank resolves to a fixed
+    live index unless a test overrides it. Mirrors the wage clients' stubbing."""
+    monkeypatch.setattr(worldbank, "fetch_national_col", lambda c: _col())
 
 
 def _profile(**kw) -> ParsedProfile:
@@ -97,12 +113,12 @@ def test_us_unknown_field_falls_back_to_oecd(monkeypatch):
 
 def test_net_takehome_ppp_matches_formula(monkeypatch):
     monkeypatch.setattr(oecd, "fetch_oecd_wages", lambda c: _oecd_wage(country="Germany", gross=54000.0))
+    monkeypatch.setattr(worldbank, "fetch_national_col", lambda c: _col(index=75.9))
 
     bundle = fact_assembly.assemble(_profile(), "Germany", _stub_route("zz_unknown"))
     expected_net = tax.compute_net_takehome(54000.0, "Germany").net_annual
-    # Berlin cpi_index = 65.3 in numbeo mock
-    assert bundle.col.col_index == pytest.approx(65.3)
-    assert bundle.net_takehome_ppp == pytest.approx(expected_net / (65.3 / 100))
+    assert bundle.col.col_index == pytest.approx(75.9)
+    assert bundle.net_takehome_ppp == pytest.approx(expected_net / (75.9 / 100))
 
 
 def test_tax_mapping_matches_compute(monkeypatch):
@@ -114,13 +130,41 @@ def test_tax_mapping_matches_compute(monkeypatch):
     assert bundle.tax.net_annual_local == pytest.approx(tb.net_annual)
 
 
-def test_col_mapping_uses_default_city(monkeypatch):
+def test_col_primary_uses_world_bank(monkeypatch):
     monkeypatch.setattr(oecd, "fetch_oecd_wages", lambda c: _oecd_wage(country="Canada", currency="CAD"))
+    monkeypatch.setattr(worldbank, "fetch_national_col", lambda c: _col(index=90.6))
 
     bundle = fact_assembly.assemble(_profile(), "Canada", _stub_route("zz_unknown"))
-    assert bundle.col.city == "Toronto"
-    assert bundle.col.col_index == pytest.approx(71.2)   # Toronto cpi_index
-    assert bundle.col.source == "Numbeo"
+    assert bundle.col.city is None                       # national figure, not city-specific
+    assert bundle.col.col_index == pytest.approx(90.6)
+    assert bundle.col.source == "World Bank"
+    assert bundle.col.col_source == "national_ppp"
+    assert bundle.col.is_fallback is False
+
+
+def test_col_falls_back_to_wherenext_when_world_bank_unavailable(monkeypatch):
+    monkeypatch.setattr(oecd, "fetch_oecd_wages", lambda c: _oecd_wage(country="Germany"))
+    monkeypatch.setattr(worldbank, "fetch_national_col", lambda c: _col(index=99, source="World Bank (fallback)", is_fallback=True))
+    monkeypatch.setattr(wherenext, "fetch_national_col", lambda c: _col(index=82.9, source=wherenext.SOURCE_LABEL, monthly=2500.0))
+
+    bundle = fact_assembly.assemble(_profile(), "Germany", _stub_route("zz_unknown"))
+    assert bundle.col.col_index == pytest.approx(82.9)
+    assert "WhereNext" in bundle.col.source
+    assert bundle.col.monthly_cost_usd == pytest.approx(2500.0)
+    assert bundle.col.col_source == "national_ppp"
+    assert bundle.col.is_fallback is False               # WhereNext is a live source
+
+
+def test_col_curated_fallback_when_both_live_sources_fail(monkeypatch):
+    monkeypatch.setattr(oecd, "fetch_oecd_wages", lambda c: _oecd_wage(country="Canada", currency="CAD"))
+    monkeypatch.setattr(worldbank, "fetch_national_col", lambda c: _col(source="World Bank (fallback)", is_fallback=True))
+    monkeypatch.setattr(wherenext, "fetch_national_col", lambda c: _col(source="WhereNext (fallback)", is_fallback=True))
+
+    bundle = fact_assembly.assemble(_profile(), "Canada", _stub_route("zz_unknown"))
+    assert bundle.col.is_fallback is True
+    assert bundle.col.source == "Curated (fallback)"
+    assert bundle.col.col_index == pytest.approx(71.2)   # numbeo Toronto cpi, curated proxy
+    assert bundle.col.col_source == "national_ppp"
 
 
 def test_visa_enrichment_populated_for_modeled_slug(monkeypatch):
