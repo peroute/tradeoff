@@ -83,7 +83,7 @@ export default function CountryPicker({ countryA, countryB, errors, onChange }: 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-4">
         <Lane path="a" field="country_a" label="Country A" value={countryA} onChange={onChange} />
         <div className="flex items-center justify-center">
-          <span className="font-mono text-xs font-semibold uppercase tracking-[0.2em] text-ink-muted">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-muted shadow-inner shadow-black/30">
             vs
           </span>
         </div>

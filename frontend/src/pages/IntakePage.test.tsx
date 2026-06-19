@@ -57,14 +57,14 @@ describe('IntakePage', () => {
     expect(screen.getByLabelText('Country A')).toBeInTheDocument()
     expect(screen.getByLabelText('Country B')).toBeInTheDocument()
     expect(screen.getByLabelText('What matters most to you?')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Compare' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Compare the two paths' })).toBeInTheDocument()
   })
 
   it('blocks submit and shows errors when required fields are empty', async () => {
     const user = userEvent.setup()
     renderPage()
 
-    await user.click(screen.getByRole('button', { name: 'Compare' }))
+    await user.click(screen.getByRole('button', { name: 'Compare the two paths' }))
 
     expect(postCompareMock).not.toHaveBeenCalled()
     expect(screen.getByText('Citizenship is required.')).toBeInTheDocument()
@@ -77,7 +77,7 @@ describe('IntakePage', () => {
     const user = await fillValidForm()
     await user.selectOptions(screen.getByLabelText('Country B'), 'US') // same as Country A
 
-    await user.click(screen.getByRole('button', { name: 'Compare' }))
+    await user.click(screen.getByRole('button', { name: 'Compare the two paths' }))
 
     expect(screen.getByText('Pick two different countries.')).toBeInTheDocument()
     expect(postCompareMock).not.toHaveBeenCalled()
@@ -88,7 +88,7 @@ describe('IntakePage', () => {
     postCompareMock.mockResolvedValue(payload)
 
     const user = await fillValidForm()
-    await user.click(screen.getByRole('button', { name: 'Compare' }))
+    await user.click(screen.getByRole('button', { name: 'Compare the two paths' }))
 
     await waitFor(() => expect(postCompareMock).toHaveBeenCalledTimes(1))
     expect(postCompareMock).toHaveBeenCalledWith(EXPECTED_PAYLOAD)
@@ -101,7 +101,7 @@ describe('IntakePage', () => {
     postCompareMock.mockRejectedValue(new Error('Server boom'))
 
     const user = await fillValidForm()
-    await user.click(screen.getByRole('button', { name: 'Compare' }))
+    await user.click(screen.getByRole('button', { name: 'Compare the two paths' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Server boom')
     expect(navigateMock).not.toHaveBeenCalled()
@@ -116,7 +116,7 @@ describe('IntakePage', () => {
     )
 
     const user = await fillValidForm()
-    await user.click(screen.getByRole('button', { name: 'Compare' }))
+    await user.click(screen.getByRole('button', { name: 'Compare the two paths' }))
 
     const button = await screen.findByRole('button', { name: 'Comparing…' })
     expect(button).toBeDisabled()
