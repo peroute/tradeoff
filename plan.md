@@ -6,7 +6,7 @@
 
 ## What This Is
 
-A country-destination comparator for international students and recent grads. The user enters their citizenship, degree field, and two countries they're considering working in. The system synthesizes what working in each country would actually look like for someone with their exact profile — visa pathway, wages, cost of living, tax-adjusted take-home, immigration climate — then surfaces structured AI reasoning about the trade-offs.
+A country-destination comparator for international students and recent grads. The user enters their citizenship, degree field, two countries they're considering, and optionally a specific city within each country (e.g. Austin vs New York within the US). The system synthesizes what working in each destination would actually look like for someone with their exact profile — visa pathway, wages, cost of living, tax-adjusted take-home, immigration climate — then surfaces structured AI reasoning about the trade-offs.
 
 No specific job offers required. The system builds the picture from market data. The differentiator is modeling real immigration constraints citizenship-by-citizenship, which most competing teams won't touch.
 
@@ -19,8 +19,8 @@ No specific job offers required. The system builds the picture from market data.
         ↓
 2b. Route + Outlook (AI call #1)  — Gemini + Google Search
         ↓                            resolves visa route from official sources
-2a. Fact Assembly  (deterministic) — wages (BLS/OECD), CoL (Numbeo), tax calc
-        ↓                            enriches with visa_rules.json curated data
+2a. Fact Assembly  (deterministic) — wages (BLS metro/OECD), CoL (cost_of_living.json
+        ↓                            or OECD PPP fallback), tax calc, visa_rules.json
 3.  Reasoning      (AI call #2)   — Gemini structured output, 7 typed insights
         ↓
     Validate       (deterministic) — 6 rules, SAFE_FALLBACK on any failure
@@ -46,16 +46,37 @@ Any other destination: wage/CoL still rendered, visa flagged as "not yet modeled
 
 | Source | Type | Covers |
 |---|---|---|
-| OECD Data API (`sdmx.oecd.org`) | Live API, no key | National average wages, all 6 countries |
-| BLS Public Data API (`api.bls.gov`) | Live API | US wages by occupation (SOC code), finer-grained |
-| Numbeo Cost of Living API | Live API | City-level cost of living |
+| OECD Data API (`sdmx.oecd.org`) | Live API, no key | National average wages + PPP conversion factors, all 6 countries |
+| BLS Public Data API (`api.bls.gov`) | Live API | US wages by occupation (SOC code); metro-area (MSA) wages when a US city is provided |
+| `data/cost_of_living.json` | Curated, cited, dated | CoL index (Numbeo scale, NYC=100) for ~20 major cities across the 6 countries; OECD PPP used as national-level fallback when city not in table or no city provided |
 | `data/visa_rules.json` | Curated, cited, dated | Visa enrichment: lottery history, partner work rights, PR timeline, salary floor — for 6 known visa slugs |
 | `data/official_source_registry.json` | Hardcoded | Approved government URLs per destination country — the only sources Stage 2b is allowed to extract from |
 | `data/tax_rates.json` | Curated, cited | Income tax brackets + social contribution rates, all 6 countries |
 | `data/field_soc_map.json` | Curated | Degree field → BLS SOC code |
 | Gemini + Google Search grounding | Live AI call, Stage 2b only | Visa route resolution + immigration policy trends + career context |
 
-**OECD vs BLS resolution gap:** US wages come from BLS (occupation-level). All other countries use OECD (national average). These are not measuring at the same resolution — this is disclosed on the dashboard via `PrecisionCaveat`.
+**Resolution gaps (disclosed via `PrecisionCaveat` on dashboard):**
+- Wages: US city provided → BLS metro-area. US no city → BLS national. Non-US → OECD national average. Not the same resolution across countries.
+- CoL: city in `cost_of_living.json` → city-level index. Otherwise → OECD PPP national. Each fact bundle tags `col_source: "city" | "national_ppp"` so the dashboard can show the right caveat.
+- Non-US wage data is always national — providing a city for UK/Canada/etc. improves CoL precision only, not wage precision.
+
+---
+
+## Cost of Living JSON schema
+
+```json
+{
+  "<city_slug>": {
+    "city": "string",
+    "country": "string",
+    "col_index": 100,
+    "source_url": "string",
+    "last_verified": "YYYY-MM-DD"
+  }
+}
+```
+
+Index uses the Numbeo scale (NYC = 100). Values are looked up manually from Numbeo's public city pages and committed as static data — no API key required. Lookup logic in `cost_of_living.py`: if `city_slug` found → use `col_index`, set `col_source = "city"`. If not found or no city provided → use OECD PPP for the country, set `col_source = "national_ppp"`.
 
 ---
 
@@ -106,7 +127,7 @@ The `routing_confidence` field (high / medium / low) and `source_url` are always
 
 ```json
 {
-  "scenario_type": "base | contingency | priority_match | synthesis",
+  "scenario_type": "base | lottery_risk | extension_risk | employer_switch | partner_work | pr_timeline | priority_match | synthesis",
   "fact_used": "exact dot-notation key from fact bundle",
   "context_used": "verbatim phrase from user_context",
   "connection": "shared vocabulary between fact_used and context_used",
@@ -117,7 +138,17 @@ The `routing_confidence` field (high / medium / low) and `source_url` are always
 }
 ```
 
-**7 insights per request:** 2 base, 2 contingency, 2 priority_match, 1 synthesis.
+**7 insights per request, one per scenario type:**
+
+| Slot | `scenario_type` | Condition |
+|---|---|---|
+| 1 | `base` | always |
+| 2 | `lottery_risk` | if `lottery_required` is true for either visa; otherwise substitute `pr_timeline` |
+| 3 | `extension_risk` | always |
+| 4 | `employer_switch` | always |
+| 5 | `partner_work` | always |
+| 6 | `priority_match` | always |
+| 7 | `synthesis` | always |
 
 **Prompt constraint:** `consideration` must state something NOT immediately obvious from the fact alone. "Make a second-order connection." Do not recommend which country to choose.
 
@@ -128,7 +159,7 @@ The `routing_confidence` field (high / medium / low) and `source_url` are always
 3. `connection` shares vocabulary with both `fact_used` and `context_used`
 4. `consideration` not in boilerplate phrases list
 5. `next_action` first word is in imperative verb set
-6. `scenario_type` ∈ `{"base", "contingency", "priority_match", "synthesis"}`
+6. `scenario_type` ∈ `{"base", "lottery_risk", "extension_risk", "employer_switch", "partner_work", "pr_timeline", "priority_match", "synthesis"}`
 
 Any failure → `SafeFallback(type="safe_fallback", reason="rule_N_failed", slot_index=N)`. Never `None`. Always visible on dashboard.
 
@@ -140,7 +171,7 @@ Any failure → `SafeFallback(type="safe_fallback", reason="rule_N_failed", slot
 
 | Dimension | Source |
 |---|---|
-| `net_takehome_ppp` | Gross wage → tax brackets → ÷ CoL index |
+| `net_takehome_ppp` | Gross wage → tax brackets → ÷ CoL index (city-level if available, OECD PPP otherwise) |
 | `visa_stability_score` | Formula: base − trend_penalty − lottery_penalty (see below) |
 | `pr_timeline_years` | `visa_rules.json` curated or AI-extracted |
 | `lottery_risk` | `1 − lottery_cumulative_3yr`; null if no lottery |
@@ -166,7 +197,7 @@ This is the one place where AI-sourced signal (`trend_direction` from Stage 2b) 
 - **SAFE_FALLBACK is visible, not hidden.** Any insight that fails validation shows `SafeFallbackNotice`: *"One analysis point was withheld because it could not be verified against source data."*
 - **`pipeline_meta` panel** (collapsible "How this was built") shows: number of AI calls made, which facts came from which source, how many insights passed vs. were withheld, `routing_confidence` per country.
 - **Every curated fact has a `source_url` and `last_verified` date**, visible on the VisaPanel.
-- **Precision caveat** disclosed on WagePanel: BLS (US, occupation-level) and OECD (other countries, national average) are not measuring at the same resolution.
+- **Precision caveat** disclosed on WagePanel and CoLPanel: wage resolution (BLS metro vs OECD national) and CoL resolution (city index vs national PPP) vary per destination and are always labeled. `col_source` tag in the fact bundle drives which caveat is shown.
 
 ---
 
@@ -180,9 +211,12 @@ This is the one place where AI-sourced signal (`trend_direction` from Stage 2b) 
   "degree_field": "Computer Science",
   "career_stage": "new_grad",
   "country_a": "US",
+  "city_a": "Austin",
   "country_b": "France",
+  "city_b": "Paris",
   "user_context": "I care most about long-term residency stability and not being tied to one employer. My partner is also looking for work."
 }
+// city_a and city_b are optional. When omitted, national-level data is used for both wages and CoL.
 
 // Response: DashboardPayload
 // bundle_a, bundle_b, outlook_a, outlook_b, insights[], sacrifice_map, pipeline_meta
@@ -197,13 +231,14 @@ This is the one place where AI-sourced signal (`trend_direction` from Stage 2b) 
 
 ### Day 1 — June 18: Foundation + Data Layer
 - Scaffold backend (FastAPI) + frontend (Vite + React + TypeScript + Tailwind)
-- Author `visa_rules.json`, `official_source_registry.json`, `tax_rates.json`, `field_soc_map.json`
-- Implement OECD, BLS, Numbeo API clients
+- Author `visa_rules.json`, `official_source_registry.json`, `tax_rates.json`, `field_soc_map.json`, `cost_of_living.json`
+- Implement OECD + BLS API clients (OECD: wages + PPP; BLS: national + metro-area by MSA code)
+- Implement `cost_of_living.py`: `get_col_index(city_slug, country)` — returns city-level index or OECD PPP fallback, always tags `col_source`
 - Implement `visa_rules.py`: `get_visa_rule()`, `merge_visa_facts()`, `compute_lottery_cumulative()`
 - Implement `compute_net_takehome()` from tax bracket tables
 - Implement `fact_assembly.py` (stubs for visa_route input — Stage 2b wired on Day 2)
 - Stub `POST /api/compare` with hardcoded payload (frontend can start)
-- Build `IntakePage`
+- Build `IntakePage` with optional city fields for each destination
 
 ### Day 2 — June 19: AI Pipeline + Validation
 - Implement `immigration_outlook.py`: Stage 2b Gemini + Search, full `RouteAndOutlook` schema

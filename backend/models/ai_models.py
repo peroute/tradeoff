@@ -3,7 +3,16 @@ from pydantic import BaseModel
 
 ConfidenceLevel = Literal["high", "medium", "low"]
 TrendDirection = Literal["improving", "stable", "restrictive"]
-ScenarioType = Literal["base", "contingency", "priority_match", "synthesis"]
+ScenarioType = Literal[
+    "base",            # baseline: what does working here actually look like for your profile
+    "lottery_risk",    # what if you don't win the lottery (H-1B or equivalent)
+    "extension_risk",  # what if your visa renewal is denied or not extended
+    "employer_switch", # what if you want to change jobs mid-visa
+    "partner_work",    # what your partner can and can't do in each country
+    "pr_timeline",     # what if PR takes longer than expected or pathway changes
+    "priority_match",  # how each country maps to what you said matters to you
+    "synthesis",       # cross-country: where does the sharpest tradeoff actually sit
+]
 
 
 class VisaRoute(BaseModel):

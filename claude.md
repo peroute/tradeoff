@@ -88,16 +88,19 @@ Any failure → `SAFE_FALLBACK`, never show unvalidated model output.
 
 | Source | Mechanism | Covers |
 |---|---|---|
-| OECD Data API (`sdmx.oecd.org`, SDMX REST, no key) | live call | wages/earnings, national/annual level, all 6 locked countries |
-| BLS Public Data API (`api.bls.gov`) | live call | US wages by occupation (SOC code), finer-grained than OECD for US only |
-| Numbeo Cost of Living API | live call | cost of living, any city |
+| OECD Data API (`sdmx.oecd.org`, SDMX REST, no key) | live call | wages/earnings + PPP conversion factors, national/annual level, all 6 locked countries |
+| BLS Public Data API (`api.bls.gov`) | live call | US wages by occupation (SOC code); metro-area (MSA) wages when a US city is provided |
+| `data/cost_of_living.json` | curated, cited, dated | CoL index (Numbeo scale, NYC=100) for ~20 major cities across the 6 countries; OECD PPP used as national-level fallback when city not in table or no city provided |
 | `data/visa_rules.json` | curated, cited, dated | enrichment for known visa slugs: lottery history, partner work rights, PR timeline, salary floor |
 | `data/official_source_registry.json` | hardcoded | approved government URLs per destination country — the only sources Stage 2b is allowed to extract from |
 | `data/tax_rates.json` | curated, cited | income tax brackets + social contribution rates, all 6 countries |
 | `data/field_soc_map.json` | curated | degree field → BLS SOC code |
 | Gemini + Google Search grounding | live AI call, Stage 2b only | visa route resolution + immigration policy trends + career context — soft information only, never hard facts |
 
-Note: OECD's granularity is national/annual-average, coarser than BLS's occupation-and-metro detail. US figures come from BLS; all other countries use OECD. These are not measuring at the same resolution — disclose this honestly via `PrecisionCaveat` on the dashboard rather than implying matched precision across countries.
+Resolution gaps (disclosed via `PrecisionCaveat` on dashboard):
+- Wages: US city provided → BLS metro-area. US no city → BLS national. Non-US → OECD national average. Not the same resolution across countries.
+- CoL: city in `cost_of_living.json` → city-level index. Otherwise → OECD PPP national. Each fact bundle tags `col_source: "city" | "national_ppp"` so the dashboard shows the right caveat.
+- Non-US wage data is always national — providing a city for UK/Canada/etc. improves CoL precision only, not wage precision.
 
 No database. No ETL.
 
@@ -121,6 +124,22 @@ No database. No ETL.
 ```
 
 Every entry needs a real `source_url` from the country's official immigration site and a `last_verified` date. Spot-check the two hardest-leaning facts (salary threshold, switch-employer rule) against the source link before submission.
+
+## Cost of living JSON schema
+
+```json
+{
+  "<city_slug>": {
+    "city": "string",
+    "country": "string",
+    "col_index": 100,
+    "source_url": "string",
+    "last_verified": "YYYY-MM-DD"
+  }
+}
+```
+
+Index is on the Numbeo scale (NYC = 100). Values are read manually from Numbeo's public city pages (no API key needed for reading the website) and committed as static data. When a user-provided city slug is not found here, `cost_of_living.py` falls back to OECD PPP for the country and sets `col_source = "national_ppp"`.
 
 ## Hard constraints
 
