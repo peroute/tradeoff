@@ -1,23 +1,45 @@
 {
   "US": [
-    "https://travel.state.gov",
-    "https://www.uscis.gov"
+    "https://www.uscis.gov",
+    "https://www.uscis.gov/working-in-the-united-states/h-1b-specialty-occupations",
+    "https://www.uscis.gov/working-in-the-united-states/temporary-workers",
+    "https://www.uscis.gov/working-in-the-united-states/permanent-workers",
+    "https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students",
+    "https://travel.state.gov/content/travel/en/us-visas/employment.html"
   ],
   "UK": [
-    "https://www.gov.uk/browse/visas-immigration"
+    "https://www.gov.uk/browse/visas-immigration",
+    "https://www.gov.uk/skilled-worker-visa",
+    "https://www.gov.uk/graduate-visa",
+    "https://www.gov.uk/global-talent",
+    "https://www.gov.uk/health-and-care-worker-visa",
+    "https://www.gov.uk/indefinite-leave-to-remain"
   ],
   "Canada": [
-    "https://www.canada.ca/en/immigration-refugees-citizenship.html"
+    "https://www.canada.ca/en/immigration-refugees-citizenship.html",
+    "https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry.html",
+    "https://www.canada.ca/en/immigration-refugees-citizenship/services/work-canada.html",
+    "https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada/work/after-graduation.html",
+    "https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry/eligibility/canadian-experience-class.html"
   ],
   "Australia": [
-    "https://immi.homeaffairs.gov.au"
+    "https://immi.homeaffairs.gov.au",
+    "https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/skilled-independent-189",
+    "https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/skilled-nominated-190",
+    "https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/skills-in-demand-482",
+    "https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/temporary-graduate-485"
   ],
   "Germany": [
     "https://www.make-it-in-germany.com",
-    "https://www.bamf.de"
+    "https://www.make-it-in-germany.com/en/visa-residence/types/eu-blue-card",
+    "https://www.make-it-in-germany.com/en/visa-residence/types/work-visa",
+    "https://www.bamf.de",
+    "https://www.bamf.de/EN/Themen/MigrationAufenthalt/ZuwandererDrittstaaten/Arbeit/arbeit-node.html"
   ],
   "France": [
     "https://france-visas.gouv.fr",
-    "https://www.service-public.fr"
+    "https://france-visas.gouv.fr/en/web/france-visas/talent-passport",
+    "https://www.service-public.fr",
+    "https://www.service-public.fr/particuliers/vosdroits/N110"
   ]
 }

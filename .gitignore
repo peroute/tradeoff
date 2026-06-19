@@ -26,5 +26,7 @@ frontend/.vite/
 .DS_Store
 Thumbs.db
 
+# Internal pitch notes (not for submission repo)
+story.md
 # Local Claude skills (installed locally, not tracked)
 .claude/skills/
