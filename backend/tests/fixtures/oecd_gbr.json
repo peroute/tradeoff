@@ -1,0 +1,613 @@
+{
+ "meta": {
+  "schema": "https://raw.githubusercontent.com/sdmx-twg/sdmx-json/master/data-message/tools/schemas/2.0.0/sdmx-json-data-schema.json",
+  "id": "IREF034338",
+  "prepared": "2026-06-18T18:48:17Z",
+  "test": false,
+  "contentLanguages": [
+   "en",
+   "en-US"
+  ],
+  "sender": {
+   "id": "Disseminate_Final_DMZ",
+   "name": "unknown",
+   "names": {
+    "en-US": "unknown"
+   }
+  }
+ },
+ "data": {
+  "dataSets": [
+   {
+    "structure": 0,
+    "action": "Information",
+    "links": [
+     {
+      "urn": "urn:sdmx:org.sdmx.infomodel.datastructure.DataStructure=OECD.ELS.SAE:DSD_EARNINGS(1.0)",
+      "rel": "DataStructure"
+     }
+    ],
+    "annotations": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "dimensionGroupAttributes": {
+     "~:0:~:~:~:~:~:~": [
+      6
+     ]
+    },
+    "series": {
+     "0:0:0:0:0:0:0": {
+      "attributes": [
+       0,
+       0,
+       0
+      ],
+      "annotations": [],
+      "observations": {
+       "0": [
+        63237.752,
+        0
+       ],
+       "1": [
+        62432.983,
+        0
+       ],
+       "2": [
+        63586.187,
+        0
+       ],
+       "3": [
+        62476.54,
+        0
+       ],
+       "4": [
+        62797.046,
+        0
+       ],
+       "5": [
+        63690.773,
+        0
+       ]
+      }
+     },
+     "0:0:1:0:0:0:0": {
+      "attributes": [
+       0,
+       0,
+       0
+      ],
+      "annotations": [],
+      "observations": {
+       "0": [
+        44487.442,
+        0
+       ],
+       "1": [
+        43921.292,
+        0
+       ],
+       "2": [
+        44732.564,
+        0
+       ],
+       "3": [
+        43951.933,
+        0
+       ],
+       "4": [
+        44177.408,
+        0
+       ],
+       "5": [
+        44806.14,
+        0
+       ]
+      }
+     },
+     "0:0:1:0:1:0:0": {
+      "attributes": [
+       null,
+       0,
+       0
+      ],
+      "annotations": [],
+      "observations": {
+       "0": [
+        36599.96,
+        0
+       ],
+       "1": [
+        36342.343,
+        0
+       ],
+       "2": [
+        37854.382,
+        0
+       ],
+       "3": [
+        40105.443,
+        0
+       ],
+       "4": [
+        43073.38,
+        0
+       ],
+       "5": [
+        44806.14,
+        0
+       ]
+      }
+     }
+    }
+   }
+  ],
+  "structures": [
+   {
+    "name": "Average annual wages",
+    "names": {
+     "en": "Average annual wages"
+    },
+    "description": "This dataset contains data on average annual wages per employee in full-time equivalent unit in the total economy. Average annual wages per full-time equivalent dependent employee are obtained by dividing the national-accounts-based total wage bill by the average number of employees in the total economy, which is then converted in full-time equivalent unit by applying the ratio of average usual weekly hours per full-time employee to that of all employees. For more details, see: <a href=\"http://www.oecd.org/els/oecd-employment-outlook-19991266.htm\">http://www.oecd.org/els/oecd-employment-outlook-19991266.htm</a> and <a href=\"http://www.oecd.org/employment/emp/onlineoecdemploymentdatabase.htm\">http://www.oecd.org/employment/emp/onlineoecdemploymentdatabase.htm</a> The data are available in Current prices in NCU,  in 2024 constant prices and NCU, in 2024 USD PPPs and 2024 constant prices. NCU: National currency units. For further details on these estimates, please see <a href=\"http://www.oecd.org/els/emp/AVERAGE_WAGES.pdf\">http://www.oecd.org/els/emp/AVERAGE_WAGES.pdf</a>",
+    "descriptions": {
+     "en": "This dataset contains data on average annual wages per employee in full-time equivalent unit in the total economy. Average annual wages per full-time equivalent dependent employee are obtained by dividing the national-accounts-based total wage bill by the average number of employees in the total economy, which is then converted in full-time equivalent unit by applying the ratio of average usual weekly hours per full-time employee to that of all employees. For more details, see: <a href=\"http://www.oecd.org/els/oecd-employment-outlook-19991266.htm\">http://www.oecd.org/els/oecd-employment-outlook-19991266.htm</a> and <a href=\"http://www.oecd.org/employment/emp/onlineoecdemploymentdatabase.htm\">http://www.oecd.org/employment/emp/onlineoecdemploymentdatabase.htm</a> The data are available in Current prices in NCU,  in 2024 constant prices and NCU, in 2024 USD PPPs and 2024 constant prices. NCU: National currency units. For further details on these estimates, please see <a href=\"http://www.oecd.org/els/emp/AVERAGE_WAGES.pdf\">http://www.oecd.org/els/emp/AVERAGE_WAGES.pdf</a>"
+    },
+    "dimensions": {
+     "dataSet": [],
+     "series": [
+      {
+       "id": "REF_AREA",
+       "name": "Reference area",
+       "names": {
+        "en": "Reference area"
+       },
+       "keyPosition": 0,
+       "roles": [
+        "REF_AREA"
+       ],
+       "values": [
+        {
+         "id": "GBR",
+         "order": 36,
+         "name": "United Kingdom",
+         "names": {
+          "en": "United Kingdom"
+         },
+         "annotations": [
+          7
+         ]
+        }
+       ]
+      },
+      {
+       "id": "MEASURE",
+       "name": "Measure",
+       "names": {
+        "en": "Measure"
+       },
+       "keyPosition": 1,
+       "roles": [
+        "MEASURE"
+       ],
+       "values": [
+        {
+         "id": "WG",
+         "order": 0,
+         "name": "Wages",
+         "names": {
+          "en": "Wages"
+         }
+        }
+       ]
+      },
+      {
+       "id": "UNIT_MEASURE",
+       "name": "Unit of measure",
+       "names": {
+        "en": "Unit of measure"
+       },
+       "keyPosition": 2,
+       "roles": [
+        "UNIT_MEASURE"
+       ],
+       "values": [
+        {
+         "id": "USD_PPP",
+         "order": 270,
+         "name": "US dollars, PPP converted",
+         "names": {
+          "en": "US dollars, PPP converted"
+         },
+         "annotations": [
+          8
+         ]
+        },
+        {
+         "id": "GBP",
+         "order": 133,
+         "name": "Pound sterling",
+         "names": {
+          "en": "Pound sterling"
+         },
+         "annotations": [
+          9
+         ]
+        }
+       ]
+      },
+      {
+       "id": "PAY_PERIOD",
+       "name": "Pay period",
+       "names": {
+        "en": "Pay period"
+       },
+       "keyPosition": 3,
+       "roles": [
+        "PAY_PERIOD"
+       ],
+       "values": [
+        {
+         "id": "A",
+         "order": 0,
+         "name": "Annual",
+         "names": {
+          "en": "Annual"
+         }
+        }
+       ]
+      },
+      {
+       "id": "PRICE_BASE",
+       "name": "Price base",
+       "names": {
+        "en": "Price base"
+       },
+       "keyPosition": 4,
+       "roles": [
+        "PRICE_BASE"
+       ],
+       "values": [
+        {
+         "id": "Q",
+         "order": 5,
+         "name": "Constant prices",
+         "names": {
+          "en": "Constant prices"
+         },
+         "annotations": [
+          10
+         ]
+        },
+        {
+         "id": "V",
+         "order": 10,
+         "name": "Current prices",
+         "names": {
+          "en": "Current prices"
+         },
+         "annotations": [
+          11
+         ]
+        }
+       ]
+      },
+      {
+       "id": "AGGREGATION_OPERATION",
+       "name": "Aggregation operation",
+       "names": {
+        "en": "Aggregation operation"
+       },
+       "keyPosition": 5,
+       "roles": [
+        "AGGREGATION_OPERATION"
+       ],
+       "values": [
+        {
+         "id": "MEAN",
+         "order": 0,
+         "name": "Mean",
+         "names": {
+          "en": "Mean"
+         }
+        }
+       ]
+      },
+      {
+       "id": "SEX",
+       "name": "Sex",
+       "names": {
+        "en": "Sex"
+       },
+       "keyPosition": 6,
+       "roles": [
+        "SEX"
+       ],
+       "values": [
+        {
+         "id": "_Z",
+         "order": 6,
+         "name": "Not applicable",
+         "names": {
+          "en": "Not applicable"
+         }
+        }
+       ]
+      }
+     ],
+     "observation": [
+      {
+       "id": "TIME_PERIOD",
+       "name": "Time period",
+       "names": {
+        "en": "Time period"
+       },
+       "keyPosition": 7,
+       "roles": [
+        "TIME_PERIOD"
+       ],
+       "values": [
+        {
+         "start": "2019-01-01T00:00:00",
+         "end": "2019-12-31T23:59:59",
+         "id": "2019",
+         "name": "2019",
+         "names": {
+          "en-US": "2019"
+         }
+        },
+        {
+         "start": "2020-01-01T00:00:00",
+         "end": "2020-12-31T23:59:59",
+         "id": "2020",
+         "name": "2020",
+         "names": {
+          "en-US": "2020"
+         }
+        },
+        {
+         "start": "2021-01-01T00:00:00",
+         "end": "2021-12-31T23:59:59",
+         "id": "2021",
+         "name": "2021",
+         "names": {
+          "en-US": "2021"
+         }
+        },
+        {
+         "start": "2022-01-01T00:00:00",
+         "end": "2022-12-31T23:59:59",
+         "id": "2022",
+         "name": "2022",
+         "names": {
+          "en-US": "2022"
+         }
+        },
+        {
+         "start": "2023-01-01T00:00:00",
+         "end": "2023-12-31T23:59:59",
+         "id": "2023",
+         "name": "2023",
+         "names": {
+          "en-US": "2023"
+         }
+        },
+        {
+         "start": "2024-01-01T00:00:00",
+         "end": "2024-12-31T23:59:59",
+         "id": "2024",
+         "name": "2024",
+         "names": {
+          "en-US": "2024"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    "attributes": {
+     "dataSet": [],
+     "dimensionGroup": [],
+     "series": [
+      {
+       "id": "BASE_PER",
+       "name": "Base period",
+       "names": {
+        "en": "Base period"
+       },
+       "roles": [
+        "BASE_PER"
+       ],
+       "relationship": {
+        "dimensions": [
+         "REF_AREA",
+         "MEASURE",
+         "UNIT_MEASURE",
+         "PAY_PERIOD",
+         "PRICE_BASE",
+         "AGGREGATION_OPERATION",
+         "SEX"
+        ]
+       },
+       "values": [
+        {
+         "value": "2024"
+        }
+       ]
+      },
+      {
+       "id": "UNIT_MULT",
+       "name": "Unit multiplier",
+       "names": {
+        "en": "Unit multiplier"
+       },
+       "roles": [
+        "UNIT_MULT"
+       ],
+       "relationship": {
+        "dimensions": [
+         "REF_AREA",
+         "MEASURE",
+         "UNIT_MEASURE",
+         "PAY_PERIOD",
+         "PRICE_BASE",
+         "AGGREGATION_OPERATION",
+         "SEX"
+        ]
+       },
+       "values": [
+        {
+         "id": "0",
+         "order": 0,
+         "name": "Units",
+         "names": {
+          "en": "Units"
+         }
+        }
+       ]
+      },
+      {
+       "id": "DECIMALS",
+       "name": "Decimals",
+       "names": {
+        "en": "Decimals"
+       },
+       "roles": [
+        "DECIMALS"
+       ],
+       "relationship": {
+        "dimensions": [
+         "REF_AREA",
+         "MEASURE",
+         "UNIT_MEASURE",
+         "PAY_PERIOD",
+         "PRICE_BASE",
+         "AGGREGATION_OPERATION",
+         "SEX"
+        ]
+       },
+       "values": [
+        {
+         "id": "0",
+         "order": 0,
+         "name": "Zero",
+         "names": {
+          "en": "Zero"
+         }
+        }
+       ]
+      }
+     ],
+     "observation": [
+      {
+       "id": "OBS_STATUS",
+       "name": "Observation status",
+       "names": {
+        "en": "Observation status"
+       },
+       "roles": [
+        "OBS_STATUS"
+       ],
+       "relationship": {
+        "observation": {}
+       },
+       "values": [
+        {
+         "id": "A",
+         "order": 0,
+         "name": "Normal value",
+         "names": {
+          "en": "Normal value"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    "annotations": [
+     {
+      "type": "NonProductionDataflow",
+      "text": "true",
+      "texts": {
+       "en": "true"
+      }
+     },
+     {
+      "id": "@SDMX",
+      "title": "REF_AREA,PRICE_BASE,UNIT_MEASURE",
+      "type": "LAYOUT_ROW"
+     },
+     {
+      "id": "@SDMX",
+      "title": "TIME_PERIOD",
+      "type": "LAYOUT_COLUMN"
+     },
+     {
+      "id": "@SDMX",
+      "title": "MEASURE,PAY_PERIOD,AGGREGATION_OPERATION,SEX,OBS_STATUS=A,UNIT_MULT=0",
+      "type": "NOT_DISPLAYED"
+     },
+     {
+      "id": "@SDMX",
+      "title": "TIME_PERIOD_START=2000",
+      "type": "DEFAULT"
+     },
+     {
+      "title": "urn:sdmx:org.sdmx.infomodel.metadatastructure.MetadataStructure=OECD:MSD_REF_METADATA(1.0)",
+      "type": "METADATA"
+     },
+     {
+      "type": "HAS_METADATA"
+     },
+     {
+      "id": "@SDMX",
+      "type": "ORDER",
+      "text": "370",
+      "texts": {
+       "en": "370"
+      }
+     },
+     {
+      "id": "@SDMX",
+      "type": "ORDER",
+      "text": "2710",
+      "texts": {
+       "en": "2710"
+      }
+     },
+     {
+      "id": "@SDMX",
+      "type": "ORDER",
+      "text": "1340",
+      "texts": {
+       "en": "1340"
+      }
+     },
+     {
+      "id": "@SDMX",
+      "type": "ORDER",
+      "text": "30",
+      "texts": {
+       "en": "30"
+      }
+     },
+     {
+      "id": "@SDMX",
+      "type": "ORDER",
+      "text": "50",
+      "texts": {
+       "en": "50"
+      }
+     }
+    ],
+    "dataSets": [
+     0
+    ]
+   }
+  ]
+ },
+ "errors": []
+}
