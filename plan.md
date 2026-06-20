@@ -18,6 +18,7 @@ No specific job offers required. The system builds the picture from market data.
 1. Intake           (deterministic) — parse user profile
         ↓
 2b-1. Route + Outlook research (AI call #1) — Gemini + Google Search grounding
+        ↓                                      RUN ONCE PER COUNTRY (×2)
         ↓                                      raw text from approved gov sources
 2b-2. Route + Outlook structure (AI call #2) — Gemini, no search
         ↓                                       response_schema=RouteAndOutlook
@@ -32,7 +33,7 @@ No specific job offers required. The system builds the picture from market data.
 5.  Output          (dashboard)
 ```
 
-**Three LLM calls.** Stage 2b is split into two sub-calls because the Google Gen AI SDK cannot reliably combine Search grounding with structured JSON output (response_schema) in a single request. Call #1 retrieves grounded research as raw text; call #2 structures that text into the RouteAndOutlook schema. Everything else is deterministic. Stage 2b runs before 2a because the AI-resolved visa slug is needed for curated enrichment lookup.
+**Four LLM calls per comparison.** Stage 2b is split into call #1 (research, with Search grounding) + call #2 (structure, no search) because the Google Gen AI SDK cannot reliably combine Search grounding with structured JSON output in a single request. **Call #1 runs once per country** (updated June 20): a single combined two-country research call let the model ground only the first country and answer the second from memory, so each country now gets its own grounded search. That makes Stage 2b 3 calls (2 research + 1 structure) and 4 LLM calls total. Everything else is deterministic. Stage 2b runs before 2a because the AI-resolved visa slug is needed for curated enrichment lookup.
 
 ---
 
@@ -84,7 +85,7 @@ Index uses the Numbeo scale (NYC = 100). Values are looked up manually from Numb
 
 ## Visa Route Resolution (Stage 2b)
 
-Routing is **fully AI-resolved** — no hardcoded citizenship → visa mapping table. Stage 2b's Gemini + Search call searches the approved official government sources for the destination country and identifies the applicable work visa path for the user's citizenship and degree field.
+Routing is **fully AI-resolved** — no hardcoded citizenship → visa mapping table. Stage 2b's Gemini + Search call (one grounded call per country) searches the approved official government sources for the destination country and identifies the applicable work visa path for the user's citizenship and degree field. Call #1 uses plain natural-language queries — no `site:` boolean operators (they mangled the search-tool queries without reliably constraining grounding). Trust is enforced downstream instead: call #2 pins `source_url` to the approved registry list, and a deterministic verifier cross-checks every `source_url` against both the registry and call #1's grounding metadata (verified / claimed / unapproved → keep / down-one-notch / force-low). No URL is ever substituted.
 
 `visa_rules.json` provides **enrichment only** for known visa slugs (lottery history, partner work rights, exact conditions). When the AI-resolved slug matches a key in `visa_rules.json`, the curated facts are merged in. When it doesn't, only the AI-extracted facts are used.
 
@@ -123,7 +124,7 @@ The `routing_confidence` field (high / medium / low) and `source_url` are always
 }
 ```
 
-**Prompt constraints:** Only extract from approved source registry URLs. Do not state hard salary thresholds or PR timelines as facts — those are validated separately. Note uncertainty explicitly.
+**Prompt constraints:** Only extract from approved source registry URLs; `source_url` is pinned to that registry list in call #2 and verified deterministically against the registry + grounding metadata. Do not state hard salary thresholds or PR timelines as facts — those are validated separately. Note uncertainty explicitly.
 
 ### Stage 3 — `WhatIfInsight` (Gemini, no search, structured output)
 
@@ -248,7 +249,7 @@ This is the one place where AI-sourced signal (`trend_direction` from Stage 2b) 
 - Implement `reasoning_step.py`: `_flatten_bundle_keys()`, `_build_prompt()`, `generate_insights()`, `validate_output()` (all 6 rules), `validate_batch()`
 - Implement `sacrifice_diff.py`: 5 dimensions, `visa_stability_score` formula
 - Implement `orchestrator.py`: wire all stages in correct order (2b → 2a parallel → 3 → validate → diff)
-- End-to-end test: India / CS / US vs France → real data, 2 AI calls confirmed
+- End-to-end test: India / CS / US vs France → real data (Stage 2b: 2 per-country research calls + 1 structure call confirmed)
 
 ### Day 3 — June 20–21: Dashboard + Polish + Submit
 - Build all dashboard components (WagePanel, VisaPanel, OutlookCard, WhatIfList grouped by scenario_type, SacrificeMap)

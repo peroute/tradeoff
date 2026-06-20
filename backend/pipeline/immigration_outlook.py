@@ -9,12 +9,14 @@ This file figures out, for two countries, (1) which work visa fits the user and
 (2) what the immigration climate is like — using AI, but without letting the AI
 invent facts or cite random websites. It works in three steps:
 
-  Step 1 — ASK GEMINI TO RESEARCH (with live Google Search)
+  Step 1 — ASK GEMINI TO RESEARCH (with live Google Search), one call per country
       We give Gemini the user's profile and ask it to look up the visa + climate
-      for each country. We tell it to search only our trusted government sites
-      (from official_source_registry.json) using "site:" filters. It returns
-      plain text. Important: that "site:" instruction is a *nudge*, not a lock —
-      Gemini can still pull other sites, so we don't trust it blindly (see Step 3).
+      for one country, basing its answer only on our trusted government sites
+      (from official_source_registry.json). Queries are plain natural language —
+      we do NOT inject "site:" boolean operators (that mangled the queries without
+      reliably constraining grounding). It returns plain text. The "use only
+      official sources" instruction is a *nudge*, not a lock — Gemini can still
+      pull other sites, so we don't trust it blindly (see Step 3).
 
   Step 2 — ASK GEMINI TO TIDY IT INTO JSON (no search)
       A second call takes that messy text and reshapes it into a strict JSON
@@ -37,14 +39,16 @@ The point: the AI does the reading, but a dumb, predictable Python check decides
 how much to trust each answer. That's the whole safety story.
 ────────────────────────────────────────────────────────────────────────────
 
-Call #1 — Gemini + Google Search grounding:
-    Researches the applicable work visa and immigration climate for each
-    country from approved government sources. Searches are steered toward the
-    registry domains via site: filters (steering only — the google_search tool
-    has no hard domain allowlist). Grounding metadata is captured as the
-    model-independent record of which sources were actually retrieved; the real
-    domain is read from grounding_chunks[].web.title, because .uri is an opaque
-    vertexaisearch redirect that masks the true host.
+Call #1 (once per country) — Gemini + Google Search grounding:
+    Researches the applicable work visa and immigration climate for one country
+    from approved government sources. Queries are plain natural language (no site:
+    operators); the model is told to base its answer only on the official sources.
+    The google_search tool has no hard domain allowlist, so this is steering, not
+    enforcement — trust is enforced downstream (Call #2 source_url pinning + the
+    verification below). Grounding metadata is captured as the model-independent
+    record of which sources were actually retrieved; the real domain is read from
+    grounding_chunks[].web.title, because .uri is an opaque vertexaisearch redirect
+    that masks the true host.
 
 Call #2 — Gemini, no search, response_schema=RouteAndOutlook, temperature=0:
     Structures the raw research text into the RouteAndOutlook schema.
@@ -113,58 +117,44 @@ def _client() -> genai.Client:
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
-def _registry_domains(country: str) -> list[str]:
-    """Unique registry domains for a country (deduped, order-stable)."""
-    seen: list[str] = []
-    for url in _SOURCE_REGISTRY.get(country, []):
-        d = urlparse(url).netloc.removeprefix("www.")
-        if d and d not in seen:
-            seen.append(d)
-    return seen
+def _build_research_prompt(profile: ParsedProfile, country: str) -> str:
+    """Call #1 prompt for ONE country — instructs Gemini to search approved sources.
 
+    Stage 2b issues one grounded search per country (see fetch()), not a single
+    combined two-country call. A combined call lets gemini-2.5-flash spend its
+    whole search budget on the first country and then answer the second from
+    parametric memory (ungrounded) — observed as a country grounding on zero
+    sources. One call per country guarantees each country is actually searched.
 
-def _site_filter(country: str) -> str:
-    """Google `site:` clause biasing search toward this country's registry domains.
-
-    NOTE: the google_search tool has no hard domain allowlist — Gemini writes its
-    own queries, so this is steering, not enforcement. The deterministic source
-    verification after Call #2 is what actually enforces the trusted-source rule.
-    """
-    domains = _registry_domains(country)
-    return " OR ".join(f"site:{d}" for d in domains)
-
-
-def _build_research_prompt(profile: ParsedProfile) -> str:
-    """Call #1 prompt — instructs Gemini to search approved government sources.
+    Queries are plain natural language — we deliberately do NOT ask the model to
+    append `site:` boolean operators. Appending an OR-chain of site: filters to
+    every query made gemini-2.5-flash's google_search rewriter mangle/truncate the
+    queries (e.g. cut off at "(site:uscis.gov OR") without reliably constraining
+    grounding. Source trust is enforced downstream instead: extraction is limited
+    to the official sources by instruction, Call #2's source_url is pinned to the
+    approved registry list, and deterministic verification confirms each against
+    the grounding metadata.
 
     Note: profile.citizenship and profile.degree_field are user-supplied strings
     interpolated into the prompt. For a production system these would be
     sanitized; acceptable surface for a hackathon demo.
     """
-    country_a, country_b = profile.country_a, profile.country_b
-    sources_a = ", ".join(_SOURCE_REGISTRY.get(country_a, []))
-    sources_b = ", ".join(_SOURCE_REGISTRY.get(country_b, []))
-    site_a = _site_filter(country_a)
-    site_b = _site_filter(country_b)
+    sources = ", ".join(_SOURCE_REGISTRY.get(country, []))
 
-    return f"""You are a visa routing researcher. A user is deciding between working in {country_a} and {country_b}.
+    return f"""You are a visa routing researcher helping a user evaluate working in {country}.
 
 User profile:
 - Citizenship: {profile.citizenship}
 - Degree field: {profile.degree_field}
 - Career stage: {profile.career_stage}
 
-Your task: research and summarise the following for EACH country. Use Google Search to find current information from the approved sources listed below.
+Your task: research and summarise the following for {country}. Use Google Search to find current information from the approved government sources listed below.
 
-For {country_a} — only extract from: {sources_a}
-For {country_b} — only extract from: {sources_b}
+Official sources (base your answer ONLY on these): {sources}
 
-SEARCH SCOPE — restrict every Google Search query to the approved domains using site: operators. Append the matching filter to each query:
-- When researching {country_a}, append: ({site_a})
-- When researching {country_b}, append: ({site_b})
-Do not rely on sources outside these domains. If the approved domains do not answer a question, say so rather than substituting an unofficial source.
+SEARCH SCOPE — write clear, natural-language search queries. Do NOT add boolean "site:" operators to your queries. After searching, ground your answer only in the official sources above; ignore any result that is not from one of those sources. If the official sources do not answer a question, say so explicitly rather than substituting an unofficial source.
 
-For each country, find:
+Find:
 
 1. VISA ROUTE
    - Which work visa applies to this user's citizenship and degree field?
@@ -189,14 +179,34 @@ IMPORTANT RULES:
 """
 
 
+def _approved_url_list(country: str) -> str:
+    """Bulleted approved-URL list for a country, for the Call #2 source allowlist."""
+    urls = _SOURCE_REGISTRY.get(country, [])
+    return "\n".join(f"  - {u}" for u in urls) or "  (none)"
+
+
 def _build_structure_prompt(raw_research: str, country_a: str, country_b: str) -> str:
-    """Call #2 prompt — structures raw research text into RouteAndOutlook JSON."""
+    """Call #2 prompt — structures raw research text into RouteAndOutlook JSON.
+
+    source_url is constrained to the approved registry URLs for each country. The
+    grounded research often mentions extra URLs (and the model sometimes invents a
+    plausible government one); if such a URL reaches the output it fails the
+    deterministic registry check and force-lows the confidence. Pinning source_url
+    to the approved list at generation time keeps well-grounded answers from being
+    penalised for an off-list citation, without any post-hoc URL substitution.
+    """
     today = datetime.date.today().isoformat()
     return f"""You are a data structuring assistant. Below is research about work visa routes and immigration climate for {country_a} and {country_b}.
 
 Structure this research into the required JSON format. Follow these rules exactly:
 
 VISA SLUG FORMAT: lowercase, underscores, country prefix. Examples: "us_h1b", "de_eu_blue_card", "uk_skilled_worker", "ca_express_entry", "au_tss_482", "fr_talent_passport".
+
+APPROVED SOURCE URLS — every source_url you output MUST be copied EXACTLY from the matching country's list below. Pick the single URL that best supports the field. Never output a URL that is not in these lists, never shorten or modify one, and never invent a new one — even if the research text cites another URL.
+{country_a}:
+{_approved_url_list(country_a)}
+{country_b}:
+{_approved_url_list(country_b)}
 
 FIELDS:
 - visa_slug: short machine-readable identifier as above
@@ -206,14 +216,14 @@ FIELDS:
 - path_to_residency_years: integer if clearly stated in the research, otherwise null
 - key_constraint: the single biggest risk or limitation for this specific user
 - routing_confidence: "high" if one clear visa applies, "medium" if multiple options or uncertainty, "low" if the research was unclear
-- source_url: MUST be a full URL starting with https:// (e.g. "https://www.uscis.gov"). Never use an organisation name or partial domain.
+- source_url: the best-matching approved URL for this country, copied exactly from the list above
 - source_retrieved: today's date "{today}"
 
 For outlook fields:
 - trend_direction: must be exactly "improving", "stable", or "restrictive"
 - key_recent_change: the single most significant policy change in the last 12 months
 - career_context: career demand outlook for this degree field in this country
-- source_url: MUST be a full URL starting with https://. Never use an organisation name.
+- source_url: the best-matching approved URL for this country, copied exactly from the list above
 - source_publish_date: approximate date the source was published, or "{today}" if unknown
 
 Do not invent information not present in the research. Use null for optional fields that cannot be filled.
@@ -392,10 +402,39 @@ def _normalize_slug(slug: str, country: str) -> str:
     return normalized
 
 
+# ── Call #1 (per-country grounded research) ───────────────────────────────────
+
+def _research_country(client: genai.Client, profile: ParsedProfile, country: str):
+    """Run one grounded Call #1 for a single country, returning the raw response.
+
+    The full response is returned (not just the text) so callers can read the
+    grounding metadata — chunks, domains, queries — from the exact call that
+    produced the research, rather than replaying a second, divergent search.
+    """
+    return client.models.generate_content(
+        model=MODEL,
+        contents=_build_research_prompt(profile, country),
+        config=types.GenerateContentConfig(
+            tools=[types.Tool(google_search=types.GoogleSearch())],
+        ),
+    )
+
+
 # ── Public entry point ────────────────────────────────────────────────────────
 
-def fetch(profile: ParsedProfile) -> RouteAndOutlook:
-    """Run Stage 2b: research (Call #1) → structure (Call #2) → verify sources.
+def fetch(profile: ParsedProfile, trace: dict | None = None) -> RouteAndOutlook:
+    """Run Stage 2b: research (Call #1 ×2) → structure (Call #2) → verify sources.
+
+    Call #1 runs once per country so each country gets its own search budget and
+    is actually grounded (a single combined call let gemini-2.5-flash answer the
+    second country from memory). The two raw research sections are concatenated
+    and handed to the single Call #2 structuring pass.
+
+    If ``trace`` is provided it is populated with the Call #1 grounding artifacts
+    (per-country response, raw text, queries, grounded domains) and the combined
+    research text — so a caller can inspect exactly what produced the JSON without
+    issuing a second, divergent search. It is reset on entry so retries don't
+    accumulate stale country entries.
 
     Raises RuntimeError on unrecoverable failure. The orchestrator catches
     this and routes to a SAFE_FALLBACK response — never a crash.
@@ -403,26 +442,43 @@ def fetch(profile: ParsedProfile) -> RouteAndOutlook:
     country_a, country_b = profile.country_a, profile.country_b
     client = _client()
 
-    # ── Call #1: Gemini + Google Search grounding → raw research text ────────
-    try:
-        research_resp = client.models.generate_content(
-            model=MODEL,
-            contents=_build_research_prompt(profile),
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-            ),
-        )
-    except Exception as exc:
-        raise RuntimeError(f"Stage 2b Call #1 (search) failed: {exc}") from exc
+    if trace is not None:
+        trace.clear()
+        trace["countries"] = []
 
-    raw_research = research_resp.text or ""
-    if not raw_research.strip():
-        raise RuntimeError("Stage 2b Call #1 returned empty research text")
+    # ── Call #1: one Gemini + Google Search grounding call per country ───────
+    raw_sections: list[str] = []
+    grounded_domains: set[str] = set()
+    search_queries: list[str] = []
+    for country in (country_a, country_b):
+        try:
+            resp = _research_country(client, profile, country)
+        except Exception as exc:
+            raise RuntimeError(f"Stage 2b Call #1 (search) failed for {country}: {exc}") from exc
+        text = resp.text or ""
+        if not text.strip():
+            raise RuntimeError(f"Stage 2b Call #1 returned empty research text for {country}")
+        domains = _extract_grounded_domains(resp)
+        queries = _extract_search_queries(resp)
+        raw_sections.append(f"### {country}\n\n{text.strip()}")
+        grounded_domains |= domains
+        search_queries.extend(queries)
+        if trace is not None:
+            trace["countries"].append({
+                "country": country,
+                "response": resp,
+                "raw_text": text.strip(),
+                "grounded_domains": domains,
+                "search_queries": queries,
+            })
 
-    grounded_domains = _extract_grounded_domains(research_resp)
-    search_queries = _extract_search_queries(research_resp)
+    raw_research = "\n\n".join(raw_sections)
     log.info("Stage 2b grounded domains: %s", grounded_domains)
     log.info("Stage 2b search queries: %s", search_queries)
+
+    if trace is not None:
+        trace["raw_research"] = raw_research
+        trace["grounded_domains"] = grounded_domains
 
     # ── Call #2: Gemini, no search, temperature=0 → structured output ────────
     try:

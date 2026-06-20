@@ -12,11 +12,11 @@ US, UK, Canada, Australia, Germany, France. Chosen by actual international-stude
 
 **Scope enforcement (no in-prompt 7th-country degradation needed):** The 6-country scope is enforced in two layers, so an unsupported country can never reach the pipeline. (1) The intake UI offers only these six via a fixed dropdown. (2) `country_a`/`country_b` are typed as `SupportedCountry = Literal["US", "UK", "Canada", "Australia", "Germany", "France"]` on `CompareRequest` (the API boundary) and `ParsedProfile` in `intake_models.py` — so a 7th country is rejected with a `422` before Stage 2b runs. Stage 2b therefore assumes a valid, supported country and does not implement graceful degradation for unmodeled countries. If you ever widen scope, update the `Literal`, the dropdown, and the curated JSON tables together.
 
-## Architecture (locked — this is "architecture B," 3 LLM calls; do not add more without discussing first)
+## Architecture (locked — "architecture B"; 4 LLM calls per comparison; do not add more without discussing first)
 
 ```
 Intake (deterministic)
-  -> Route + Outlook research (AI call #1: Gemini + Google Search grounding, raw text)
+  -> Route + Outlook research (AI call #1: Gemini + Google Search grounding, raw text) — RUN ONCE PER COUNTRY (×2)
   -> Route + Outlook structure (AI call #2: Gemini no search, response_schema=RouteAndOutlook)
   -> Fact assembly (deterministic: live APIs + visa_rules.json enrichment using AI-resolved slug)
   -> What-if reasoning (AI call #3: Gemini no search, reasoning_step.py)
@@ -25,7 +25,13 @@ Intake (deterministic)
   -> Output (dashboard)
 ```
 
-Stage 2b is split into two sub-calls (call #1 + #2) because Google Search grounding and structured JSON output cannot be reliably combined in one SDK call. Call #1 retrieves grounded research from approved government sources as raw text. Call #2 takes that text and enforces the RouteAndOutlook schema via response_schema — no search, just structuring. This split was chosen on June 19 for reliability over the original single-call design. The visa slug resolved in call #2 is required for the `visa_rules.json` enrichment lookup before fact assembly can run.
+Stage 2b is split into call #1 (research, with Google Search grounding) + call #2 (structure, no search) because Google Search grounding and structured JSON output cannot be reliably combined in one SDK call. This split was chosen on June 19 for reliability over the original single-call design.
+
+**Call #1 runs once per country (updated June 20).** A single combined two-country research call let `gemini-2.5-flash` spend its whole search budget on the first country and answer the second from parametric memory (ungrounded) — we observed a country grounding on zero sources, then being force-lowed in verification. One grounded call per country guarantees each country is actually searched. So a comparison makes **3 Stage-2b calls** (2 research + 1 structure) and **4 LLM calls total** (+ Stage 3).
+
+Call #1 query style (updated June 20): plain natural-language queries — we deliberately do NOT inject `site:` boolean operators. Appending an OR-chain of `site:` filters made the search-tool rewriter mangle/truncate queries without reliably constraining grounding. Trust is enforced downstream (call #2 `source_url` pinning + deterministic verification), not via query operators.
+
+Call #2 takes the concatenated per-country research text and enforces the RouteAndOutlook schema via response_schema, `temperature=0`. Its `source_url` is **pinned to the approved registry list** (the prompt injects the allowlist and forbids inventing/modifying a URL) — this stopped the model fabricating off-registry citations that the verifier then had to force-low. The visa slug resolved in call #2 is required for the `visa_rules.json` enrichment lookup before fact assembly can run.
 
 ## Contracts — match these exactly, don't improvise field names
 
@@ -57,7 +63,7 @@ Stage 2b is split into two sub-calls (call #1 + #2) because Google Search ground
 }
 ```
 
-Prompt constraint: only extract from `official_source_registry.json` approved URLs. Do not state hard salary thresholds or PR timelines as facts — those are validated separately via `visa_rules.json`.
+Prompt constraint: only extract from `official_source_registry.json` approved URLs. `source_url` is pinned to that registry list in call #2 and then cross-checked deterministically against BOTH the registry AND call #1 grounding metadata (verdicts: verified / claimed / unapproved → keep / down-one-notch / force-low). Do not state hard salary thresholds or PR timelines as facts — those are validated separately via `visa_rules.json`.
 
 **Stage 3 output schema** (`WhatIfInsight`, Gemini no search, structured output, 7 insights per request: 2 base, 2 contingency, 2 priority_match, 1 synthesis — where "contingency" is a category filled by any of the granular risk scenario types below):
 ```json
@@ -147,7 +153,7 @@ Index is on the Numbeo scale (NYC = 100). Values are read manually from Numbeo's
 ## Hard constraints
 
 - No LangChain, no MCP — the brief's own kickoff Q&A says judges score justification, not architecture-by-name; both would add surface area with no judging benefit here.
-- Three LLM calls total (calls #1 and #2 are both Stage 2b sub-calls; call #3 is Stage 3). Do not add a fourth without discussing first.
+- Four LLM calls per comparison (Stage 2b = 3: one grounded research call PER COUNTRY [2] + one structuring call [1]; Stage 3 = 1). Updated June 20 from the original 3-call design: the per-country split was required because a single combined research call left the second country ungrounded. Do not add more without discussing first.
 - Curated visa facts are never look-up targets for the search-grounded call — only the outlook/trend stage touches live search.
 - The AI never states which option to choose. That's the human-in-the-loop boundary — keep it enforced in the output stage, not just mentioned in prose. `HumanBoundaryBanner` must be pinned, always visible, contrasting background.
 
