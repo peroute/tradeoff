@@ -1,8 +1,8 @@
-"""Stage 3 reasoning_step — scenario_type plumbing (issue #36).
+"""Stage 3 reasoning_step — single-call refactor + scenario_type plumbing.
 
 All offline: validate_output is pure stdlib+pydantic and never calls a model.
-The generate_reasoning test injects a fake google.genai SDK so the stamping
-path runs without the real SDK or an API key.
+Tests that exercise generate_insights inject a fake google.genai SDK (via
+fake_genai fixture) so the stamping path runs without the real SDK or API key.
 """
 
 import sys
@@ -18,7 +18,6 @@ from backend.pipeline.reasoning_step import (
     _contingency_scenarios,
     _slot_plan,
     generate_insights,
-    generate_reasoning,
     to_insight,
     validate_output,
 )
@@ -104,9 +103,9 @@ def test_validate_output_rejects_missing_scenario_type():
 
 @pytest.fixture
 def fake_genai(monkeypatch):
-    """Inject a minimal google.genai SDK so generate_reasoning runs offline.
+    """Inject a minimal google.genai SDK so generate_insights runs offline.
 
-    Returns a setter: call with the dict the fake 'model' should return.
+    Returns a setter: call with the list of 7 dicts the fake model should return.
     """
     holder: dict = {}
 
@@ -137,24 +136,37 @@ def fake_genai(monkeypatch):
     return _set
 
 
-def test_generate_reasoning_stamps_scenario_type(fake_genai):
-    """The caller owns scenario_type — it's stamped even if the model omits it."""
-    model_out = _valid_output()
-    del model_out["scenario_type"]  # model returns nothing for it
-    fake_genai(model_out)
+def test_generate_insights_stamps_scenario_type(fake_genai):
+    """Caller stamps scenario_type — model omitting it still yields the right type."""
+    plan = _slot_plan(BUNDLE_A, BUNDLE_B)
+    # Model returns items without scenario_type; stamping must supply it.
+    items = []
+    for _ in plan:
+        item = _valid_output()
+        del item["scenario_type"]
+        items.append(item)
+    fake_genai(items)
 
-    result = generate_reasoning(FACT_BUNDLE, USER_CONTEXT, scenario_type="base")
-    assert result.passed, result.failures
-    assert result.output["scenario_type"] == "base"
+    insights = generate_insights(BUNDLE_A, BUNDLE_B, USER_CONTEXT)
+
+    assert len(insights) == 7
+    for i, item in enumerate(insights):
+        if isinstance(item, WhatIfInsight):
+            assert item.scenario_type == plan[i]
 
 
-def test_generate_reasoning_overrides_model_scenario_type(fake_genai):
-    """A bad value from the model can't survive — caller's value wins."""
-    fake_genai(_valid_output(scenario_type="contingency"))
+def test_generate_insights_overrides_model_scenario_type(fake_genai):
+    """A bad scenario_type from the model can't survive — caller's slot value wins."""
+    plan = _slot_plan(BUNDLE_A, BUNDLE_B)
+    # Model returns "contingency" for every slot (invalid); stamping must replace it.
+    fake_genai([_valid_output(scenario_type="contingency") for _ in plan])
 
-    result = generate_reasoning(FACT_BUNDLE, USER_CONTEXT, scenario_type="synthesis")
-    assert result.passed, result.failures
-    assert result.output["scenario_type"] == "synthesis"
+    insights = generate_insights(BUNDLE_A, BUNDLE_B, USER_CONTEXT)
+
+    assert len(insights) == 7
+    for i, item in enumerate(insights):
+        if isinstance(item, WhatIfInsight):
+            assert item.scenario_type == plan[i]
 
 
 # ---------------------------------------------------------------------------
@@ -217,15 +229,17 @@ def test_to_insight_maps_failure_to_safefallback():
     assert "fact_used bad" in fallback.reason
 
 
-def test_generate_insights_returns_seven_typed_union(monkeypatch):
-    """Expansion + mapping end to end: the synthesis slot fails → SafeFallback."""
-
-    def fake_generate_reasoning(fact_bundle, user_context, *, scenario_type, **kw):
-        if scenario_type == "synthesis":
-            return ValidationResult(False, ["boom"], {})
-        return ValidationResult(True, [], _valid_output(scenario_type=scenario_type))
-
-    monkeypatch.setattr(reasoning_step, "generate_reasoning", fake_generate_reasoning)
+def test_generate_insights_returns_seven_typed_union(fake_genai):
+    """Single Gemini call end-to-end: synthesis slot fails validation → SafeFallback."""
+    plan = _slot_plan(BUNDLE_A, BUNDLE_B)
+    # Slot 6 (synthesis) has a fact_used not in the real bundle → validation fails.
+    items = []
+    for i, _ in enumerate(plan):
+        if i == 6:
+            items.append(_valid_output(fact_used="nonexistent.key.not.in.bundle"))
+        else:
+            items.append(_valid_output())
+    fake_genai(items)
 
     insights = generate_insights(BUNDLE_A, BUNDLE_B, USER_CONTEXT)
 
@@ -234,8 +248,7 @@ def test_generate_insights_returns_seven_typed_union(monkeypatch):
     fallbacks = [i for i in insights if isinstance(i, SafeFallback)]
     assert len(fallbacks) == 1
     assert fallbacks[0].slot_index == 6  # synthesis is the last slot
-    # Each insight carries the scenario_type its slot asked for.
-    plan = _slot_plan(BUNDLE_A, BUNDLE_B)
+    # Each WhatIfInsight carries the scenario_type its slot demanded.
     for i, item in enumerate(insights):
         if isinstance(item, WhatIfInsight):
             assert item.scenario_type == plan[i]
