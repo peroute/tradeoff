@@ -59,10 +59,10 @@ Stage 2b is split into two sub-calls (call #1 + #2) because Google Search ground
 
 Prompt constraint: only extract from `official_source_registry.json` approved URLs. Do not state hard salary thresholds or PR timelines as facts — those are validated separately via `visa_rules.json`.
 
-**Stage 3 output schema** (`WhatIfInsight`, Gemini no search, structured output, 7 insights per request: 2 base, 2 contingency, 2 priority_match, 1 synthesis):
+**Stage 3 output schema** (`WhatIfInsight`, Gemini no search, structured output, 7 insights per request: 2 base, 2 contingency, 2 priority_match, 1 synthesis — where "contingency" is a category filled by any of the granular risk scenario types below):
 ```json
 {
-  "scenario_type": "base | contingency | priority_match | synthesis",
+  "scenario_type": "base | lottery_risk | extension_risk | employer_switch | partner_work | pr_timeline | priority_match | synthesis",
   "fact_used": "exact dot-notation key from fact bundle",
   "context_used": "verbatim phrase from user_context",
   "connection": "shared vocabulary between fact_used and context_used",
@@ -81,7 +81,7 @@ Prompt constraint: `consideration` must state something NOT immediately obvious 
 3. `connection` shares vocabulary with both `fact_used` and `context_used`
 4. `consideration` not in boilerplate phrases list
 5. `next_action` first word is in imperative verb set
-6. `scenario_type` ∈ `{"base", "contingency", "priority_match", "synthesis"}`
+6. `scenario_type` ∈ `{"base", "lottery_risk", "extension_risk", "employer_switch", "partner_work", "pr_timeline", "priority_match", "synthesis"}` (the `ScenarioType` literal in `ai_models.py` is the source of truth)
 
 Any failure → `SAFE_FALLBACK`, never show unvalidated model output.
 
