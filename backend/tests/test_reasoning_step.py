@@ -10,12 +10,22 @@ import types as pytypes
 
 import pytest
 
-from backend.models.ai_models import ScenarioType, WhatIfInsight
+from backend.models.ai_models import SafeFallback, ScenarioType, WhatIfInsight
+from backend.pipeline import reasoning_step
 from backend.pipeline.reasoning_step import (
     VALID_SCENARIO_TYPES,
+    ValidationResult,
+    _contingency_scenarios,
+    _slot_plan,
+    generate_insights,
     generate_reasoning,
+    to_insight,
     validate_output,
 )
+from backend.pipeline.sample_payload import _bundle_a, _bundle_b
+
+# Granular risk types the two "contingency" slots may resolve to.
+_RISK_TYPES = {"lottery_risk", "extension_risk", "employer_switch", "partner_work", "pr_timeline"}
 
 # Fact bundle keyed bundle_a/bundle_b so fact_used matches the real convention
 # (mirrors backend/pipeline/sample_payload.py).
@@ -145,3 +155,90 @@ def test_generate_reasoning_overrides_model_scenario_type(fake_genai):
     result = generate_reasoning(FACT_BUNDLE, USER_CONTEXT, scenario_type="synthesis")
     assert result.passed, result.failures
     assert result.output["scenario_type"] == "synthesis"
+
+
+# ---------------------------------------------------------------------------
+# 1->7 expansion + typed-union mapping (issue #38)
+# ---------------------------------------------------------------------------
+
+# Sample comparison: US H-1B (lottery + restricted partner) vs Germany Blue Card
+# (no lottery, full partner). Reused across the expansion tests.
+BUNDLE_A = _bundle_a("US")
+BUNDLE_B = _bundle_b("Germany")
+
+
+def test_contingency_scenarios_pick_relevant_risks():
+    """US lottery + restricted partner → lottery_risk and partner_work lead."""
+    chosen = _contingency_scenarios(BUNDLE_A, BUNDLE_B)
+    assert chosen == ["lottery_risk", "partner_work"]
+
+
+def test_contingency_scenarios_pad_to_two_when_no_signals():
+    """A bundle with no curated risk signals still yields two distinct types."""
+    neutered = BUNDLE_B.model_copy(
+        update={
+            "visa_enrichment": None,
+            "visa_route": BUNDLE_B.visa_route.model_copy(
+                update={"path_to_residency_years": None}
+            ),
+        }
+    )
+    chosen = _contingency_scenarios(neutered, neutered)
+    assert len(chosen) == 2
+    assert len(set(chosen)) == 2
+    assert set(chosen) <= _RISK_TYPES
+
+
+def test_slot_plan_composition():
+    """7 slots: 2 base, 2 contingency (granular), 2 priority_match, 1 synthesis."""
+    plan = _slot_plan(BUNDLE_A, BUNDLE_B)
+    assert len(plan) == 7
+    assert plan.count("base") == 2
+    assert plan.count("priority_match") == 2
+    assert plan.count("synthesis") == 1
+    assert plan[2] in _RISK_TYPES and plan[3] in _RISK_TYPES
+    assert plan[2] != plan[3]
+
+
+def test_to_insight_maps_passed_to_whatifinsight():
+    result = ValidationResult(True, [], _valid_output())
+    insight = to_insight(result, 0)
+    assert isinstance(insight, WhatIfInsight)
+    assert insight.type == "insight"
+    assert insight.scenario_type == "pr_timeline"
+
+
+def test_to_insight_maps_failure_to_safefallback():
+    result = ValidationResult(False, ["fact_used bad", "connection thin"], {})
+    fallback = to_insight(result, 3)
+    assert isinstance(fallback, SafeFallback)
+    assert fallback.type == "safe_fallback"
+    assert fallback.slot_index == 3
+    assert "fact_used bad" in fallback.reason
+
+
+def test_generate_insights_returns_seven_typed_union(monkeypatch):
+    """Expansion + mapping end to end: the synthesis slot fails → SafeFallback."""
+
+    def fake_generate_reasoning(fact_bundle, user_context, *, scenario_type, **kw):
+        if scenario_type == "synthesis":
+            return ValidationResult(False, ["boom"], {})
+        return ValidationResult(True, [], _valid_output(scenario_type=scenario_type))
+
+    monkeypatch.setattr(reasoning_step, "generate_reasoning", fake_generate_reasoning)
+
+    insights = generate_insights(BUNDLE_A, BUNDLE_B, USER_CONTEXT)
+
+    assert len(insights) == 7
+    assert sum(isinstance(i, WhatIfInsight) for i in insights) == 6
+    fallbacks = [i for i in insights if isinstance(i, SafeFallback)]
+    assert len(fallbacks) == 1
+    assert fallbacks[0].slot_index == 6  # synthesis is the last slot
+    # Each insight carries the scenario_type its slot asked for.
+    plan = _slot_plan(BUNDLE_A, BUNDLE_B)
+    for i, item in enumerate(insights):
+        if isinstance(item, WhatIfInsight):
+            assert item.scenario_type == plan[i]
+    # Every element serializes with its discriminator.
+    for item in insights:
+        assert item.model_dump()["type"] in {"insight", "safe_fallback"}
