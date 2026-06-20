@@ -32,7 +32,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any, Iterable, get_args
+
+from backend.models.ai_models import ScenarioType
 
 # ---------------------------------------------------------------------------
 # Contract constants
@@ -41,6 +43,7 @@ from typing import Any, Iterable
 MODEL_ID = "gemini-2.5-flash"  # Stage 3 model, per CLAUDE.md
 
 REQUIRED_FIELDS = (
+    "scenario_type",
     "fact_used",
     "context_used",
     "connection",
@@ -52,11 +55,18 @@ REQUIRED_FIELDS = (
 
 VALID_CONFIDENCE = frozenset({"high", "medium", "low"})
 
+# Single source of truth: the scenario taxonomy lives on the WhatIfInsight model
+# (ai_models.ScenarioType). Deriving the set here — rather than re-listing it —
+# means a stray value (the kind that caused the /api/compare 500) can never pass
+# the validator. pydantic is a core dep, so the validator stays SDK-free.
+VALID_SCENARIO_TYPES = frozenset(get_args(ScenarioType))
+
 # JSON Schema for Gemini structured output (response_schema). Kept as a plain
 # dict so it has no SDK dependency and can be reused by tests.
 STAGE3_RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
+        "scenario_type": {"type": "string", "enum": sorted(VALID_SCENARIO_TYPES)},
         "fact_used": {"type": "string"},
         "context_used": {"type": "string"},
         "connection": {"type": "string"},
@@ -270,6 +280,11 @@ def validate_output(
                 f"confidence not in {{high, medium, low}}: {output['confidence']!r}"
             )
 
+    # Rule 6 (CLAUDE.md): scenario_type must be a real ScenarioType value.
+    scenario_type = output.get("scenario_type")
+    if not isinstance(scenario_type, str) or scenario_type not in VALID_SCENARIO_TYPES:
+        failures.append(f"scenario_type not in ScenarioType: {scenario_type!r}")
+
     # If the shape is already broken, stop here — later checks assume strings.
     if failures:
         return ValidationResult(False, failures, build_safe_fallback(failures))
@@ -336,12 +351,14 @@ def validate_output(
 # ---------------------------------------------------------------------------
 
 
-def build_prompt(fact_bundle: dict[str, Any], raw_context: Any) -> str:
+def build_prompt(fact_bundle: dict[str, Any], raw_context: Any, scenario_type: str) -> str:
     """Assemble the Stage 3 what-if prompt from real facts and real intake.
 
     The model is told to ground every field in the supplied material and to use
     only keys present in the bundle — the same things ``validate_output`` later
-    enforces deterministically.
+    enforces deterministically. ``scenario_type`` frames which what-if angle to
+    reason about; the caller (not the model) owns it, so the prompt states it as
+    a given rather than asking the model to choose.
     """
     real_keys = sorted(_flatten_keys(fact_bundle))
     keys_block = "\n".join(f"  - {k}" for k in real_keys)
@@ -351,6 +368,7 @@ def build_prompt(fact_bundle: dict[str, Any], raw_context: Any) -> str:
         "Surface ONE concrete consideration that connects a specific assembled "
         "fact to something the user actually told us. You never state which "
         "option to choose.\n\n"
+        f"Reason specifically about the '{scenario_type}' scenario.\n\n"
         "Rules:\n"
         "  * fact_used MUST be exactly one of the keys listed below.\n"
         "  * context_used MUST be drawn from what the user said.\n"
@@ -366,10 +384,16 @@ def generate_reasoning(
     fact_bundle: dict[str, Any],
     raw_context: Any,
     *,
+    scenario_type: str,
     client: Any | None = None,
     model_id: str = MODEL_ID,
 ) -> ValidationResult:
     """Run the Stage 3 Gemini call and validate the result before returning.
+
+    ``scenario_type`` is the what-if angle for this slot, owned by the caller so
+    the pipeline can guarantee its fixed composition (e.g. 2 base, 2 contingency,
+    2 priority_match, 1 synthesis). It is stamped authoritatively onto the parsed
+    output before validation, so the model cannot drift it to an invalid value.
 
     The Gemini SDK (``google-genai``) is imported lazily so this module — and
     in particular ``validate_output`` — can be used and tested without the SDK
@@ -389,7 +413,7 @@ def generate_reasoning(
 
         response = client.models.generate_content(
             model=model_id,
-            contents=build_prompt(fact_bundle, raw_context),
+            contents=build_prompt(fact_bundle, raw_context, scenario_type),
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=STAGE3_RESPONSE_SCHEMA,
@@ -403,5 +427,9 @@ def generate_reasoning(
     except Exception as exc:  # SDK missing, network, parse, auth — all fall back.
         reason = f"Stage 3 generation failed: {type(exc).__name__}: {exc}"
         return ValidationResult(False, [reason], build_safe_fallback([reason]))
+
+    # The caller owns scenario_type — stamp it so the model can't drift it.
+    if isinstance(parsed, dict):
+        parsed["scenario_type"] = scenario_type
 
     return validate_output(parsed, fact_bundle, raw_context)
