@@ -23,7 +23,7 @@ The hard part of this problem is not fetching data; it's reasoning responsibly o
 - **A clean split between "soft" and "hard" knowledge.** The LLM is *only* allowed to reason about and retrieve soft information — visa-route resolution, policy trends, career context. Hard facts (salary floors, PR timelines, lottery odds) are **never** looked up by the model; they come from curated, cited, dated sources. The model is structurally prevented from being the source of a number that matters.
 - **Grounded retrieval, then structured extraction — two sub-calls, for a reason.** Stage 2b runs Gemini with **Google Search grounding restricted to an all-listed registry of official government URLs**, then a second no-search call enforces a strict `response_schema`. We split these deliberately because Search grounding and structured JSON output can't be reliably combined in one SDK call — a justification-over-buzzwords choice, exactly what the brief asks judges to reward.
 - **Second-order reasoning, not summary.** Stage 3 generates 7 typed "what-if" insights per comparison (`base`, `contingency`, `priority_match`, `synthesis`). Each insight must explicitly bind a **fact** from the data bundle to a **verbatim phrase from the user's own stated priorities**, and the `consideration` field is required to state something *not obvious from the fact alone*.
-- **Every model output is validated before a human ever sees it.** A deterministic `validate_output()` enforces 6 rules — the cited fact must exist in the bundle, the user-context quote must be real, the connection must share vocabulary with both, the conclusion can't be boilerplate, the action must be imperative, the type must be in the allowed set. **Any failure routes to a visible `SAFE_FALLBACK` — unvalidated model output is never displayed.** The validator and the prompt builder share one source of truth (`_flatten_bundle_keys()`) so they can't drift.
+- **Every model output is validated before a human ever sees it.** A deterministic `validate_output()` enforces 6 rules — the cited fact must exist in the bundle, the user-context quote must be real, the connection must share vocabulary with both, the conclusion can't be boilerplate, the action must be imperative, the type must be in the allowed set. **Any failure routes to a visible `SAFE_FALLBACK` — unvalidated model output is never displayed.** The validator and the prompt builder share one source of truth (`_flatten_keys()` in `reasoning_step.py`) so they can't drift.
 
 ### Responsible AI (10%) — enforced in code, not just claimed
 
@@ -33,7 +33,7 @@ The hard part of this problem is not fetching data; it's reasoning responsibly o
 
 ### Solution design (25%)
 
-A locked, justified pipeline — **exactly 3 LLM calls, everything else deterministic** — with no database, no ETL, no LangChain, no MCP (deliberately: the brief's own Q&A says judges score justification, not architecture-by-name). Scope is enforced in two layers (a fixed dropdown and a `Literal` type at the API boundary), so an unsupported country is rejected with a `422` before any AI runs, rather than being handled by fragile in-prompt degradation.
+A locked, justified pipeline — **exactly 4 LLM calls, everything else deterministic** (Stage 2b = 3: two per-country grounded research calls + one structuring call; Stage 3 = 1: one call returns all 7 insights as a JSON array; the validator runs per-item so per-slot SAFE_FALLBACK still works) — with no database, no ETL, no LangChain, no MCP (deliberately: the brief's own Q&A says judges score justification, not architecture-by-name). Scope is enforced in two layers (a fixed dropdown and a `Literal` type at the API boundary), so an unsupported country is rejected with a `422` before any AI runs, rather than being handled by fragile in-prompt degradation.
 
 ### Impact & insight (15%)
 
@@ -46,17 +46,19 @@ The differentiator is the immigration modeling most competing teams won't attemp
 ```
 Intake (deterministic — parse + validate profile)
    │
-   ├─▶ AI call #1  Route + Outlook research   Gemini + Google Search grounding
-   │                                          (allow-listed government URLs only, raw text)
-   ├─▶ AI call #2  Route + Outlook structure  Gemini, no search, response_schema=RouteAndOutlook
+   ├─▶ AI calls #1a/#1b  Route + Outlook research (×2, once per country)
+   │                     Gemini + Google Search grounding, allow-listed gov URLs, raw text
+   ├─▶ AI call #2        Route + Outlook structure
+   │                     Gemini, no search, response_schema=RouteAndOutlook, temperature=0
    │
-   ├─▶ Fact assembly (deterministic)          OECD + BLS live APIs, tax + cost-of-living +
-   │                                          visa-rules enrichment via AI-resolved visa slug
+   ├─▶ Fact assembly (deterministic)
+   │   World Bank/WhereNext/Numbeo CoL · OECD/BLS wages · tax · visa-rules enrichment
    │
-   ├─▶ AI call #3  What-if reasoning          7 typed, fact-bound insights
-   ├─▶ Validate (deterministic)               6 rules → SAFE_FALLBACK on any failure
+   ├─▶ AI call #3        What-if reasoning — one call, 7 insights returned as JSON array
+   │                     Gemini structured output · validator runs per item
+   ├─▶ Validate (deterministic, per item)  6 rules → per-slot SAFE_FALLBACK on any failure
    │
-   ├─▶ Sacrifice-map diff (deterministic)     5-dimension cross-country comparison
+   ├─▶ Sacrifice-map diff (deterministic)  5-dimension cross-country comparison
    │
    └─▶ Dashboard
 ```
@@ -78,7 +80,7 @@ Intake (deterministic — parse + validate profile)
 
 Two processes: backend on `:8000`, frontend on `:5173`.
 
-> The frontend runs end-to-end with **no API keys** — `POST /api/compare` returns a schema-valid, self-labeled **sample payload**. Add a Gemini key to enable the live AI pipeline.
+> The frontend runs end-to-end with **no API keys** — `POST /api/compare` currently returns a schema-valid, self-labeled **sample payload** while the orchestrator is being wired. The live pipeline (all stages connected) requires both a `GEMINI_API_KEY` and the completed `orchestrator.py`.
 
 ### Backend
 
@@ -143,7 +145,9 @@ Example `POST /api/compare` body:
 |---|---|---|
 | OECD Data API (`sdmx.oecd.org`) | live, no key | national wages + PPP conversion, all 6 countries |
 | BLS Public Data API (`api.bls.gov`) | live | US wages by occupation (SOC); metro-area when a US city is given |
-| `data/cost_of_living.json` | curated, cited, dated | city CoL index (Numbeo scale, NYC=100); OECD PPP fallback |
+| World Bank Open Data API (`api.worldbank.org`) | live, no key | national price-level index (US = 100) — **primary CoL source** |
+| WhereNext (`getwherenext.com`, CC BY 4.0) | live, no key | national cost index (US = 100) — secondary CoL source when World Bank unavailable |
+| `data_sources/numbeo.py` (curated mock) | curated, offline fallback | national CoL indices; last resort when both live CoL sources fail; flagged on dashboard |
 | `data/visa_rules.json` | curated, cited, dated | lottery history, partner work rights, PR timeline, salary floor |
 | `data/official_source_registry.json` | hardcoded | the **only** government URLs Stage 2b may extract from |
 | `data/tax_rates.json` | curated, cited | income tax + social contribution rates, all 6 countries |
@@ -171,7 +175,7 @@ tradeoff/
 │   ├── routers/             compare · visa · health
 │   ├── pipeline/            intake · immigration_outlook (2b) · reasoning_step (3)
 │   │                        fact_assembly · sacrifice_diff · orchestrator
-│   ├── data_sources/        oecd · bls · numbeo · tax · visa_rules
+│   ├── data_sources/        oecd · bls · worldbank · wherenext · numbeo · tax · visa_rules
 │   ├── models/              Pydantic schemas (intake · fact · ai · output)
 │   ├── data/                curated cited JSON
 │   └── tests/

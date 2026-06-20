@@ -22,8 +22,8 @@ No specific job offers required. The system builds the picture from market data.
         ↓                                      raw text from approved gov sources
 2b-2. Route + Outlook structure (AI call #2) — Gemini, no search
         ↓                                       response_schema=RouteAndOutlook
-2a. Fact Assembly   (deterministic) — wages (BLS metro/OECD), CoL (cost_of_living.json
-        ↓                             or OECD PPP fallback), tax calc, visa_rules.json
+2a. Fact Assembly   (deterministic) — wages (BLS/OECD), CoL (World Bank→WhereNext→Numbeo),
+        ↓                             tax calc, visa_rules.json enrichment via AI-resolved slug
 3.  Reasoning       (AI call #3)   — Gemini structured output, 7 typed insights
         ↓
     Validate        (deterministic) — 6 rules, SAFE_FALLBACK on any failure
@@ -33,7 +33,7 @@ No specific job offers required. The system builds the picture from market data.
 5.  Output          (dashboard)
 ```
 
-**Four LLM calls per comparison.** Stage 2b is split into call #1 (research, with Search grounding) + call #2 (structure, no search) because the Google Gen AI SDK cannot reliably combine Search grounding with structured JSON output in a single request. **Call #1 runs once per country** (updated June 20): a single combined two-country research call let the model ground only the first country and answer the second from memory, so each country now gets its own grounded search. That makes Stage 2b 3 calls (2 research + 1 structure) and 4 LLM calls total. Everything else is deterministic. Stage 2b runs before 2a because the AI-resolved visa slug is needed for curated enrichment lookup.
+**Four LLM calls per comparison.** Stage 2b = 3 calls: Call #1 runs once per country (2 grounded research calls) + Call #2 structures the combined output (1 call). Stage 3 = 1 call: one Gemini call that receives all 7 required scenario types in the prompt and returns a JSON array of 7 insights; the validator then runs on each item individually so per-slot SAFE_FALLBACK still works. The Stage 2b per-country split was adopted June 20 — a single combined call let the model ground only the first country and answer the second from memory. Everything outside these 4 calls is deterministic. Stage 2b runs before 2a because the AI-resolved visa slug is needed for curated enrichment lookup.
 
 ---
 
@@ -50,8 +50,10 @@ Any other destination: wage/CoL still rendered, visa flagged as "not yet modeled
 | Source | Type | Covers |
 |---|---|---|
 | OECD Data API (`sdmx.oecd.org`) | Live API, no key | National average wages + PPP conversion factors, all 6 countries |
-| BLS Public Data API (`api.bls.gov`) | Live API | US wages by occupation (SOC code); metro-area (MSA) wages when a US city is provided |
-| `data/cost_of_living.json` | Curated, cited, dated | CoL index (Numbeo scale, NYC=100) for ~20 major cities across the 6 countries; OECD PPP used as national-level fallback when city not in table or no city provided |
+| BLS Public Data API (`api.bls.gov`) | Live API | US wages by occupation (SOC code); national when no SOC match found |
+| World Bank Open Data API (`api.worldbank.org`) | Live API, no key | National price-level index (PLI = PPP/XR × 100, US = 100), all 6 countries — **primary CoL source** |
+| WhereNext (`getwherenext.com`, CC BY 4.0) | Live API, no key | National cost index (US = 100); aggregates World Bank ICP / Eurostat — **secondary CoL source** when World Bank unavailable |
+| `data_sources/numbeo.py` (curated mock) | Curated, offline fallback | Curated national CoL indices (NYC = 100 shape); last-resort when both live CoL sources fail; flagged `is_mock=True` |
 | `data/visa_rules.json` | Curated, cited, dated | Visa enrichment: lottery history, partner work rights, PR timeline, salary floor — for 6 known visa slugs |
 | `data/official_source_registry.json` | Hardcoded | Approved government URLs per destination country — the only sources Stage 2b is allowed to extract from |
 | `data/tax_rates.json` | Curated, cited | Income tax brackets + social contribution rates, all 6 countries |
@@ -59,27 +61,8 @@ Any other destination: wage/CoL still rendered, visa flagged as "not yet modeled
 | Gemini + Google Search grounding | Live AI call, Stage 2b only | Visa route resolution + immigration policy trends + career context |
 
 **Resolution gaps (disclosed via `PrecisionCaveat` on dashboard):**
-- Wages: US city provided → BLS metro-area. US no city → BLS national. Non-US → OECD national average. Not the same resolution across countries.
-- CoL: city in `cost_of_living.json` → city-level index. Otherwise → OECD PPP national. Each fact bundle tags `col_source: "city" | "national_ppp"` so the dashboard can show the right caveat.
-- Non-US wage data is always national — providing a city for UK/Canada/etc. improves CoL precision only, not wage precision.
-
----
-
-## Cost of Living JSON schema
-
-```json
-{
-  "<city_slug>": {
-    "city": "string",
-    "country": "string",
-    "col_index": 100,
-    "source_url": "string",
-    "last_verified": "YYYY-MM-DD"
-  }
-}
-```
-
-Index uses the Numbeo scale (NYC = 100). Values are looked up manually from Numbeo's public city pages and committed as static data — no API key required. Lookup logic in `cost_of_living.py`: if `city_slug` found → use `col_index`, set `col_source = "city"`. If not found or no city provided → use OECD PPP for the country, set `col_source = "national_ppp"`.
+- Wages: US + known degree field → BLS occupation-level national wage (SOC code from `field_soc_map.json`). US + unknown field or any non-US country → OECD national average. Resolution is never equivalent across countries.
+- CoL: World Bank national PLI (primary live) → WhereNext national index (secondary live) → Numbeo curated mock (last resort). All three sources are national-level — no city tier is available. Every bundle always tags `col_source: "national_ppp"`.
 
 ---
 
@@ -141,23 +124,24 @@ The `routing_confidence` field (high / medium / low) and `source_url` are always
 }
 ```
 
-**7 insights per request, one per scenario type:**
+**7 insights per comparison, slot plan determined by `_slot_plan()` in `reasoning_step.py`:**
 
-| Slot | `scenario_type` | Condition |
+| Slot | `scenario_type` | Rule |
 |---|---|---|
-| 1 | `base` | always |
-| 2 | `lottery_risk` | if `lottery_required` is true for either visa; otherwise substitute `pr_timeline` |
-| 3 | `extension_risk` | always |
-| 4 | `employer_switch` | always |
-| 5 | `partner_work` | always |
-| 6 | `priority_match` | always |
-| 7 | `synthesis` | always |
+| 1–2 | `base` | fixed — always two base insights |
+| 3–4 | dynamic contingency | `_contingency_scenarios()` picks the two most relevant granular risk types present in either bundle |
+| 5–6 | `priority_match` | fixed — always two priority_match insights |
+| 7 | `synthesis` | fixed — always one synthesis insight |
 
-**Prompt constraint:** `consideration` must state something NOT immediately obvious from the fact alone. "Make a second-order connection." Do not recommend which country to choose.
+**Contingency priority order (highest to lowest):** `lottery_risk` > `partner_work` > `employer_switch` > `pr_timeline` > `extension_risk` (fallback — always eligible). The first two eligible scenario types from this list fill slots 3 and 4.
+
+Stage 3 is **one Gemini call** that receives all 7 required scenario types in the prompt and returns a JSON array of 7 insights. The validator then runs on each item individually — per-slot SAFE_FALLBACK still works; only the failing slot is replaced.
+
+**Prompt constraint:** `consideration` must state something NOT immediately obvious from the fact alone. Do not recommend which country to choose.
 
 ### `validate_output()` — 6 rules (in `reasoning_step.py`)
 
-1. `fact_used` ∈ `_flatten_bundle_keys(bundle_a) ∪ _flatten_bundle_keys(bundle_b)`
+1. `fact_used` ∈ `_flatten_keys(bundle_a) ∪ _flatten_keys(bundle_b)` (via `_flatten_keys()` in `reasoning_step.py`)
 2. `context_used` substring-matches `user_context`
 3. `connection` shares vocabulary with both `fact_used` and `context_used`
 4. `consideration` not in boilerplate phrases list
@@ -166,7 +150,7 @@ The `routing_confidence` field (high / medium / low) and `source_url` are always
 
 Any failure → `SafeFallback(type="safe_fallback", reason="rule_N_failed", slot_index=N)`. Never `None`. Always visible on dashboard.
 
-`_flatten_bundle_keys()` is the single source of truth — used by both the prompt builder and the validator. They must never diverge.
+`_flatten_keys()` (in `reasoning_step.py`) is the single source of truth — used by both `build_prompt()` and `validate_output()`. They must never diverge.
 
 ---
 
@@ -214,12 +198,12 @@ This is the one place where AI-sourced signal (`trend_direction` from Stage 2b) 
   "degree_field": "Computer Science",
   "career_stage": "new_grad",
   "country_a": "US",
-  "city_a": "Austin",
   "country_b": "France",
-  "city_b": "Paris",
   "user_context": "I care most about long-term residency stability and not being tied to one employer. My partner is also looking for work."
 }
-// city_a and city_b are optional. When omitted, national-level data is used for both wages and CoL.
+// career_stage ∈ new_grad | early_career | mid_career | senior
+// country_a / country_b must be one of the six supported destinations (Literal enforced at API boundary — 422 otherwise)
+// Note: no city_a / city_b — all wage and CoL data is national-level for all destinations
 
 // Response: DashboardPayload
 // bundle_a, bundle_b, outlook_a, outlook_b, insights[], sacrifice_map, pipeline_meta
@@ -230,35 +214,33 @@ This is the one place where AI-sourced signal (`trend_direction` from Stage 2b) 
 
 ---
 
-## 3-Day Build Plan
+## Current Status (June 20)
 
-### Day 1 — June 18: Foundation + Data Layer
-- Scaffold backend (FastAPI) + frontend (Vite + React + TypeScript + Tailwind)
-- Author `visa_rules.json`, `official_source_registry.json`, `tax_rates.json`, `field_soc_map.json`, `cost_of_living.json`
-- Implement OECD + BLS API clients (OECD: wages + PPP; BLS: national + metro-area by MSA code)
-- Implement `cost_of_living.py`: `get_col_index(city_slug, country)` — returns city-level index or OECD PPP fallback, always tags `col_source`
-- Implement `visa_rules.py`: `get_visa_rule()`, `merge_visa_facts()`, `compute_lottery_cumulative()`
-- Implement `compute_net_takehome()` from tax bracket tables
-- Implement `fact_assembly.py` (stubs for visa_route input — Stage 2b wired on Day 2)
-- Stub `POST /api/compare` with hardcoded payload (frontend can start)
-- Build `IntakePage` with optional city fields for each destination
+### Done
 
-### Day 2 — June 19: AI Pipeline + Validation
-- Implement intake_models.py (CompareRequest) — unblock app boot
-- Implement `immigration_outlook.py`: Stage 2b Gemini + Search, full `RouteAndOutlook` schema
-- Implement `reasoning_step.py`: `_flatten_bundle_keys()`, `_build_prompt()`, `generate_insights()`, `validate_output()` (all 6 rules), `validate_batch()`
-- Implement `sacrifice_diff.py`: 5 dimensions, `visa_stability_score` formula
-- Implement `orchestrator.py`: wire all stages in correct order (2b → 2a parallel → 3 → validate → diff)
-- End-to-end test: India / CS / US vs France → real data (Stage 2b: 2 per-country research calls + 1 structure call confirmed)
+**Backend — all pipeline stages built and tested:**
+- ✓ `pipeline/intake.py` — Stage 1: parse, sanitize, normalize, validate
+- ✓ `pipeline/immigration_outlook.py` — Stage 2b: per-country grounded research (Call #1 ×2) + structured output (Call #2) + deterministic source verification
+- ✓ `pipeline/fact_assembly.py` — Stage 2a: wages (BLS/OECD), CoL (World Bank→WhereNext→Numbeo), tax calc, visa enrichment lookup
+- ✓ `pipeline/reasoning_step.py` — Stage 3: `generate_insights()` (7 slots, one Gemini call per slot), `validate_output()` (6 rules), `build_prompt()`, `to_insight()`, `_slot_plan()`, `_contingency_scenarios()`, `_flatten_keys()`
+- ✓ `pipeline/sacrifice_diff.py` — Stage 4: 5-dimension sacrifice map with `visa_stability_score` formula
+- ✓ `data_sources/` — oecd, bls, worldbank, wherenext, numbeo, tax, visa_rules (all with graceful fallback)
+- ✓ `models/` — all Pydantic schemas: intake_models, ai_models, fact_models, output_models
+- ✓ `data/` — visa_rules.json, tax_rates.json, field_soc_map.json, official_source_registry.json
+- ✓ `routers/` — health, visa, compare (compare still uses sample stub — see below)
+- ✓ Tests for all pipeline stages and data sources
 
-### Day 3 — June 20–21: Dashboard + Polish + Submit
-- Build all dashboard components (WagePanel, VisaPanel, OutlookCard, WhatIfList grouped by scenario_type, SacrificeMap)
-- `HumanBoundaryBanner` pinned, always visible
-- `SafeFallbackNotice` visible (not collapsible)
-- `pipeline_meta` collapsible panel
-- `LoadingPage` with named stage labels
-- QA: SAFE_FALLBACK path, 7th-country graceful degradation, unknown citizenship no-crash
-- Submit
+**Frontend — intake and loading complete; dashboard partial:**
+- ✓ `IntakePage` — full form: profile, country picker, priorities, submit + loading overlay
+- ✓ `LoadingPage` / `GeneratingScreen` — animated path convergence, pipeline stage messaging
+- ✓ Dashboard components built: `SacrificeMap`, `WagePanel`, `VisaPanel`, `OutlookCard`, `WhatIfList`, `WhatIfCard`, `HumanBoundaryBanner`, `ConfidenceChip`, `PrecisionCaveat`, `SafeFallbackNotice`, `SourceCitation`, `NotModeledBadge`
+- ✓ `DashboardPage` — partial: currently mounts only `SacrificeMap` + `WagePanel`
+
+### Remaining (submission-blocking)
+
+1. **`pipeline/orchestrator.py`** — `run_pipeline(request) -> DashboardPayload` needs to be implemented. Wire order: intake → 2b (per-country research ×2 + structure) → 2a (fact assembly ×2) → reasoning (7 slots) → sacrifice_diff. The file currently contains only a comment stub.
+2. **`routers/compare.py`** — replace `build_sample_payload()` call with `run_pipeline()` once orchestrator lands.
+3. **`DashboardPage.tsx`** — mount the remaining built components: `VisaPanel`, `OutlookCard`, `WhatIfList` (with `HumanBoundaryBanner` pinned, `SafeFallbackNotice` visible, `pipeline_meta` collapsible panel).
 
 ---
 
