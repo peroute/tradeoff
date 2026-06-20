@@ -5,17 +5,18 @@ Hits Gemini live. Run from the repo root:
     python -m backend.scripts.run_stage2b
     python -m backend.scripts.run_stage2b --citizenship Nigeria --field "Mechanical Engineering" --a UK --b Canada
 
-It does two things, in order:
+It runs fetch() exactly once (passing a trace dict that fetch() fills with its
+Call #1 grounding artifacts), then prints two things, in order:
 
-  1. GROUNDING INSPECTION — replays Call #1 (Gemini + Google Search) directly so
-     it can dump the *actual* grounding metadata: the search queries Gemini issued
-     and the URLs it really retrieved. Each retrieved URL is flagged as in-registry
-     or not. This is the ground truth that the self-reported `source_url` should be
-     checked against (see the Stage 2b audit).
+  1. GROUNDING INSPECTION — the *actual* grounding metadata captured during that
+     run: the search queries Gemini issued and the URLs it really retrieved, each
+     flagged as in-registry or not. Because it comes from the same run, this is the
+     true ground truth that the self-reported `source_url` is checked against — no
+     second, divergent replay search.
 
-  2. STRUCTURED OUTPUT — runs the real fetch() end-to-end and pretty-prints the
-     RouteAndOutlook, with a per-source check of the *claimed* source_url against
-     the approved registry, so you can eyeball claim-vs-evidence drift.
+  2. STRUCTURED OUTPUT — the RouteAndOutlook from the same fetch(), with a
+     per-source check of the *claimed* source_url against the approved registry and
+     the run's grounding set, so you can eyeball claim-vs-evidence drift.
 
 This is a throwaway inspection tool, not a pytest test. It is intentionally noisy.
 """
@@ -27,7 +28,6 @@ import json
 import sys
 import time
 
-from google.genai import types
 from google.genai import errors as genai_errors
 
 # Windows consoles default to cp1252, which chokes on chars like U+2011 (non-breaking
@@ -74,35 +74,21 @@ def _kv(label: str, value: object) -> None:
 
 # ── (1) grounding inspection ─────────────────────────────────────────────────
 
-def inspect_grounding(profile: ParsedProfile) -> set[str]:
-    """Replay Call #1 (once per country) and dump the real grounding metadata.
+def print_grounding(trace: dict) -> None:
+    """Dump the Call #1 grounding metadata captured during the single fetch() run.
 
-    fetch() now issues one grounded search per country, so the inspection mirrors
-    that: a separate Call #1 per country, each with its own queries / sources /
-    raw text. Returns the union of domains Gemini actually retrieved across both,
-    so the structured-output pass can show the same verified/claimed/unapproved
-    verdicts that fetch() uses internally. (fetch() runs its own Call #1s, so the
-    two grounding sets can differ slightly — this is an inspection tool, not a
-    transactional record.)
+    Reads from the ``trace`` fetch() populated, so what's shown here is the exact
+    research (queries, retrieved sources, raw text) that produced the JSON below —
+    not a second, divergent replay search.
     """
     _rule("CALL #1 - GROUNDING INSPECTION (what Gemini actually retrieved)")
 
-    client = io._client()
-    grounded_all: set[str] = set()
-
-    for country in (profile.country_a, profile.country_b):
-        resp = _with_retry(lambda c=country: client.models.generate_content(
-            model=io.MODEL,
-            contents=io._build_research_prompt(profile, c),
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-            ),
-        ))
-
+    for entry in trace.get("countries", []):
+        country = entry["country"]
+        resp = entry["response"]
+        grounded = entry["grounded_domains"]
+        queries = entry["search_queries"]
         approved = io._approved_domains(country)
-        grounded = io._extract_grounded_domains(resp)
-        queries = io._extract_search_queries(resp)
-        grounded_all |= grounded
 
         print(f"\n  ── {country} ──")
         print(f"\n  Search queries Gemini issued ({len(queries)}):")
@@ -131,10 +117,8 @@ def inspect_grounding(profile: ParsedProfile) -> set[str]:
             print(f"    [{flag:>11}] {dom or '(unknown)':<28} {title or '(no title)'}")
 
         print(f"\n  Normalized grounded domains: {sorted(grounded) or '(none)'}")
-        print(f"\n  --- raw research text returned by Call #1 ({country}) ---\n")
-        print((resp.text or "(empty)").strip())
-
-    return grounded_all
+        print(f"\n  --- raw research text that produced the JSON ({country}) ---\n")
+        print(entry["raw_text"] or "(empty)")
 
 
 # ── (2) structured output ────────────────────────────────────────────────────
@@ -172,9 +156,8 @@ def _print_outlook(label: str, outlook, country: str, grounded: set[str]) -> Non
     _kv("  -> source verdict", _VERDICT_LABEL.get(verdict, verdict))
 
 
-def run_fetch(profile: ParsedProfile, grounded: set[str]) -> None:
+def print_structured(result, profile: ParsedProfile, grounded: set[str]) -> None:
     _rule("STRUCTURED OUTPUT - fetch() end-to-end (Call #1 + #2 + verification)")
-    result = _with_retry(lambda: io.fetch(profile))
 
     _print_route("visa_route_a", result.visa_route_a, profile.country_a, grounded)
     _print_route("visa_route_b", result.visa_route_b, profile.country_b, grounded)
@@ -205,7 +188,8 @@ def main() -> None:
     p.add_argument(
         "--skip-grounding",
         action="store_true",
-        help="skip the grounding-inspection call (saves one Gemini call)",
+        help="suppress the grounding-inspection printout (grounding is captured "
+             "during the single fetch() run regardless, so this saves no API calls)",
     )
     args = p.parse_args()
 
@@ -225,10 +209,16 @@ def main() -> None:
     for k, v in profile.model_dump().items():
         _kv(k, v)
 
-    grounded: set[str] = set()
+    # One fetch() run produces both the structured result and (via trace) the
+    # Call #1 grounding artifacts — so the inspection below reflects the exact
+    # research that produced the JSON, with no second divergent search.
+    trace: dict = {}
+    result = _with_retry(lambda: io.fetch(profile, trace=trace))
+
     if not args.skip_grounding:
-        grounded = inspect_grounding(profile)
-    run_fetch(profile, grounded)
+        print_grounding(trace)
+
+    print_structured(result, profile, trace.get("grounded_domains", set()))
 
 
 if __name__ == "__main__":
