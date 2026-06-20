@@ -134,37 +134,37 @@ def _site_filter(country: str) -> str:
     return " OR ".join(f"site:{d}" for d in domains)
 
 
-def _build_research_prompt(profile: ParsedProfile) -> str:
-    """Call #1 prompt — instructs Gemini to search approved government sources.
+def _build_research_prompt(profile: ParsedProfile, country: str) -> str:
+    """Call #1 prompt for ONE country — instructs Gemini to search approved sources.
+
+    Stage 2b issues one grounded search per country (see fetch()), not a single
+    combined two-country call. A combined call lets gemini-2.5-flash spend its
+    whole search budget on the first country and then answer the second from
+    parametric memory (ungrounded) — observed as a country grounding on zero
+    sources. One call per country guarantees each country is actually searched.
 
     Note: profile.citizenship and profile.degree_field are user-supplied strings
     interpolated into the prompt. For a production system these would be
     sanitized; acceptable surface for a hackathon demo.
     """
-    country_a, country_b = profile.country_a, profile.country_b
-    sources_a = ", ".join(_SOURCE_REGISTRY.get(country_a, []))
-    sources_b = ", ".join(_SOURCE_REGISTRY.get(country_b, []))
-    site_a = _site_filter(country_a)
-    site_b = _site_filter(country_b)
+    sources = ", ".join(_SOURCE_REGISTRY.get(country, []))
+    site = _site_filter(country)
 
-    return f"""You are a visa routing researcher. A user is deciding between working in {country_a} and {country_b}.
+    return f"""You are a visa routing researcher helping a user evaluate working in {country}.
 
 User profile:
 - Citizenship: {profile.citizenship}
 - Degree field: {profile.degree_field}
 - Career stage: {profile.career_stage}
 
-Your task: research and summarise the following for EACH country. Use Google Search to find current information from the approved sources listed below.
+Your task: research and summarise the following for {country}. Use Google Search to find current information from the approved sources listed below.
 
-For {country_a} — only extract from: {sources_a}
-For {country_b} — only extract from: {sources_b}
+Only extract from: {sources}
 
-SEARCH SCOPE — restrict every Google Search query to the approved domains using site: operators. Append the matching filter to each query:
-- When researching {country_a}, append: ({site_a})
-- When researching {country_b}, append: ({site_b})
+SEARCH SCOPE — restrict every Google Search query to the approved domains. Append this site: filter to each query: ({site})
 Do not rely on sources outside these domains. If the approved domains do not answer a question, say so rather than substituting an unofficial source.
 
-For each country, find:
+Find:
 
 1. VISA ROUTE
    - Which work visa applies to this user's citizenship and degree field?
@@ -392,10 +392,37 @@ def _normalize_slug(slug: str, country: str) -> str:
     return normalized
 
 
+# ── Call #1 (per-country grounded research) ───────────────────────────────────
+
+def _research_country(client: genai.Client, profile: ParsedProfile, country: str):
+    """Run one grounded Call #1 for a single country.
+
+    Returns (raw_text, grounded_domains, search_queries). Raising is left to the
+    caller so an individual country failure can be surfaced with its name.
+    """
+    resp = client.models.generate_content(
+        model=MODEL,
+        contents=_build_research_prompt(profile, country),
+        config=types.GenerateContentConfig(
+            tools=[types.Tool(google_search=types.GoogleSearch())],
+        ),
+    )
+    return (
+        resp.text or "",
+        _extract_grounded_domains(resp),
+        _extract_search_queries(resp),
+    )
+
+
 # ── Public entry point ────────────────────────────────────────────────────────
 
 def fetch(profile: ParsedProfile) -> RouteAndOutlook:
-    """Run Stage 2b: research (Call #1) → structure (Call #2) → verify sources.
+    """Run Stage 2b: research (Call #1 ×2) → structure (Call #2) → verify sources.
+
+    Call #1 runs once per country so each country gets its own search budget and
+    is actually grounded (a single combined call let gemini-2.5-flash answer the
+    second country from memory). The two raw research sections are concatenated
+    and handed to the single Call #2 structuring pass.
 
     Raises RuntimeError on unrecoverable failure. The orchestrator catches
     this and routes to a SAFE_FALLBACK response — never a crash.
@@ -403,24 +430,22 @@ def fetch(profile: ParsedProfile) -> RouteAndOutlook:
     country_a, country_b = profile.country_a, profile.country_b
     client = _client()
 
-    # ── Call #1: Gemini + Google Search grounding → raw research text ────────
-    try:
-        research_resp = client.models.generate_content(
-            model=MODEL,
-            contents=_build_research_prompt(profile),
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-            ),
-        )
-    except Exception as exc:
-        raise RuntimeError(f"Stage 2b Call #1 (search) failed: {exc}") from exc
+    # ── Call #1: one Gemini + Google Search grounding call per country ───────
+    raw_sections: list[str] = []
+    grounded_domains: set[str] = set()
+    search_queries: list[str] = []
+    for country in (country_a, country_b):
+        try:
+            text, domains, queries = _research_country(client, profile, country)
+        except Exception as exc:
+            raise RuntimeError(f"Stage 2b Call #1 (search) failed for {country}: {exc}") from exc
+        if not text.strip():
+            raise RuntimeError(f"Stage 2b Call #1 returned empty research text for {country}")
+        raw_sections.append(f"### {country}\n\n{text.strip()}")
+        grounded_domains |= domains
+        search_queries.extend(queries)
 
-    raw_research = research_resp.text or ""
-    if not raw_research.strip():
-        raise RuntimeError("Stage 2b Call #1 returned empty research text")
-
-    grounded_domains = _extract_grounded_domains(research_resp)
-    search_queries = _extract_search_queries(research_resp)
+    raw_research = "\n\n".join(raw_sections)
     log.info("Stage 2b grounded domains: %s", grounded_domains)
     log.info("Stage 2b search queries: %s", search_queries)
 

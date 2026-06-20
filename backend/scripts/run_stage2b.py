@@ -75,57 +75,66 @@ def _kv(label: str, value: object) -> None:
 # ── (1) grounding inspection ─────────────────────────────────────────────────
 
 def inspect_grounding(profile: ParsedProfile) -> set[str]:
-    """Replay Call #1 and dump the real grounding metadata.
+    """Replay Call #1 (once per country) and dump the real grounding metadata.
 
-    Returns the set of domains Gemini actually retrieved, so the structured-output
-    pass can show the same verified/claimed/unapproved verdicts that fetch() uses
-    internally. (fetch() runs its own Call #1, so the two grounding sets can differ
-    slightly — this is an inspection tool, not a transactional record.)
+    fetch() now issues one grounded search per country, so the inspection mirrors
+    that: a separate Call #1 per country, each with its own queries / sources /
+    raw text. Returns the union of domains Gemini actually retrieved across both,
+    so the structured-output pass can show the same verified/claimed/unapproved
+    verdicts that fetch() uses internally. (fetch() runs its own Call #1s, so the
+    two grounding sets can differ slightly — this is an inspection tool, not a
+    transactional record.)
     """
     _rule("CALL #1 - GROUNDING INSPECTION (what Gemini actually retrieved)")
 
     client = io._client()
-    resp = _with_retry(lambda: client.models.generate_content(
-        model=io.MODEL,
-        contents=io._build_research_prompt(profile),
-        config=types.GenerateContentConfig(
-            tools=[types.Tool(google_search=types.GoogleSearch())],
-        ),
-    ))
+    grounded_all: set[str] = set()
 
-    approved = io._approved_domains(profile.country_a) | io._approved_domains(profile.country_b)
-    grounded = io._extract_grounded_domains(resp)
-    queries = io._extract_search_queries(resp)
+    for country in (profile.country_a, profile.country_b):
+        resp = _with_retry(lambda c=country: client.models.generate_content(
+            model=io.MODEL,
+            contents=io._build_research_prompt(profile, c),
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+            ),
+        ))
 
-    print(f"\n  Search queries Gemini issued ({len(queries)}):")
-    for q in queries:
-        _kv("-", q)
+        approved = io._approved_domains(country)
+        grounded = io._extract_grounded_domains(resp)
+        queries = io._extract_search_queries(resp)
+        grounded_all |= grounded
 
-    # Per-chunk view: title + raw uri (usually a vertex redirect URL — that's the
-    # audit gotcha) and whether its normalized domain landed in the registry.
-    chunks = []
-    try:
-        chunks = resp.candidates[0].grounding_metadata.grounding_chunks or []
-    except (AttributeError, IndexError, TypeError):
-        pass
+        print(f"\n  ── {country} ──")
+        print(f"\n  Search queries Gemini issued ({len(queries)}):")
+        for q in queries:
+            _kv("-", q)
 
-    print(f"\n  Sources actually retrieved ({len(chunks)}):")
-    if not chunks:
-        print("    (none reported)")
-    for c in chunks:
-        web = getattr(c, "web", None)
-        uri = getattr(web, "uri", "") if web else ""
-        title = getattr(web, "title", "") if web else ""
-        # Real domain lives in the title; the uri is a vertexaisearch redirect.
-        dom = io._domain_from_title(title) or io._domain_of(uri)
-        in_reg = bool(dom) and any(dom == a or dom.endswith("." + a) for a in approved)
-        flag = "IN-REGISTRY" if in_reg else "off-list"
-        print(f"    [{flag:>11}] {dom or '(unknown)':<28} {title or '(no title)'}")
+        # Per-chunk view: title + raw uri (usually a vertex redirect URL — that's
+        # the audit gotcha) and whether its normalized domain landed in registry.
+        chunks = []
+        try:
+            chunks = resp.candidates[0].grounding_metadata.grounding_chunks or []
+        except (AttributeError, IndexError, TypeError):
+            pass
 
-    print(f"\n  Normalized grounded domains: {sorted(grounded) or '(none)'}")
-    print("\n  --- raw research text returned by Call #1 ---\n")
-    print((resp.text or "(empty)").strip())
-    return grounded
+        print(f"\n  Sources actually retrieved ({len(chunks)}):")
+        if not chunks:
+            print("    (none reported)")
+        for c in chunks:
+            web = getattr(c, "web", None)
+            uri = getattr(web, "uri", "") if web else ""
+            title = getattr(web, "title", "") if web else ""
+            # Real domain lives in the title; the uri is a vertexaisearch redirect.
+            dom = io._domain_from_title(title) or io._domain_of(uri)
+            in_reg = bool(dom) and any(dom == a or dom.endswith("." + a) for a in approved)
+            flag = "IN-REGISTRY" if in_reg else "off-list"
+            print(f"    [{flag:>11}] {dom or '(unknown)':<28} {title or '(no title)'}")
+
+        print(f"\n  Normalized grounded domains: {sorted(grounded) or '(none)'}")
+        print(f"\n  --- raw research text returned by Call #1 ({country}) ---\n")
+        print((resp.text or "(empty)").strip())
+
+    return grounded_all
 
 
 # ── (2) structured output ────────────────────────────────────────────────────
