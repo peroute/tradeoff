@@ -169,7 +169,7 @@ def _insights() -> list:
             next_action="Confirm your partner's qualification recognition in Germany.",
         ),
         WhatIfInsight(
-            scenario_type="contingency",
+            scenario_type="lottery_risk",
             fact_used="bundle_a.visa_enrichment.lottery_cumulative_3yr",
             context_used="long-term residency stability",
             connection="cumulative lottery odds bound the stability of the US path",
@@ -179,7 +179,7 @@ def _insights() -> list:
             next_action="Draft a backup plan (O-1 or cap-exempt employer) before accepting a US offer.",
         ),
         WhatIfInsight(
-            scenario_type="contingency",
+            scenario_type="employer_switch",
             fact_used="bundle_b.visa_enrichment.switch_conditions",
             context_used="long-term residency stability",
             connection="employer-switch rules shape recovery if a job ends",
