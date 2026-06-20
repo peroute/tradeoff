@@ -82,9 +82,6 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-from google import genai
-from google.genai import types
-
 from backend.config import settings
 from backend.models.ai_models import ImmigrationOutlook, RouteAndOutlook, VisaRoute
 from backend.models.intake_models import ParsedProfile
@@ -111,7 +108,8 @@ _SLUG_PREFIX: dict[str, str] = {
 _DOWNGRADE_ONE: dict[str, str] = {"high": "medium", "medium": "low", "low": "low"}
 
 
-def _client() -> genai.Client:
+def _client():
+    from google import genai
     return genai.Client(api_key=settings.gemini_api_key)
 
 
@@ -404,13 +402,14 @@ def _normalize_slug(slug: str, country: str) -> str:
 
 # ── Call #1 (per-country grounded research) ───────────────────────────────────
 
-def _research_country(client: genai.Client, profile: ParsedProfile, country: str):
+def _research_country(client, profile: ParsedProfile, country: str):
     """Run one grounded Call #1 for a single country, returning the raw response.
 
     The full response is returned (not just the text) so callers can read the
     grounding metadata — chunks, domains, queries — from the exact call that
     produced the research, rather than replaying a second, divergent search.
     """
+    from google.genai import types
     return client.models.generate_content(
         model=MODEL,
         contents=_build_research_prompt(profile, country),
@@ -439,6 +438,8 @@ def fetch(profile: ParsedProfile, trace: dict | None = None) -> RouteAndOutlook:
     Raises RuntimeError on unrecoverable failure. The orchestrator catches
     this and routes to a SAFE_FALLBACK response — never a crash.
     """
+    from google.genai import types
+
     country_a, country_b = profile.country_a, profile.country_b
     client = _client()
 

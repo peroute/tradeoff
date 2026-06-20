@@ -1,7 +1,8 @@
-"""Tests for the stubbed POST /api/compare endpoint.
+"""Tests for POST /api/compare.
 
-Offline: the endpoint returns a hardcoded payload, no data-source or LLM calls.
-Exercises both the builder directly and the live FastAPI route via TestClient.
+Offline: the live endpoint is tested by monkeypatching run_pipeline so no
+Gemini or data-source calls are made. The sample_payload builder is tested
+directly for payload shape invariants.
 """
 
 import pytest
@@ -12,6 +13,7 @@ from backend.models.ai_models import SafeFallback, WhatIfInsight
 from backend.models.intake_models import CompareRequest
 from backend.models.output_models import DashboardPayload
 from backend.pipeline.sample_payload import STUB_NOTE, build_sample_payload
+from backend.routers import compare as compare_router
 
 client = TestClient(app)
 
@@ -38,11 +40,27 @@ def test_builder_returns_valid_payload():
     assert isinstance(payload, DashboardPayload)
 
 
-def test_post_compare_returns_200_and_valid_schema():
+def test_post_compare_returns_200_and_valid_schema(monkeypatch):
+    monkeypatch.setattr(compare_router, "run_pipeline", build_sample_payload)
     resp = client.post("/api/compare", json=_valid_body())
     assert resp.status_code == 200
-    # Re-validates the JSON against the full schema.
     DashboardPayload.model_validate(resp.json())
+
+
+def test_post_compare_503_on_runtime_error(monkeypatch):
+    def _fail(req):
+        raise RuntimeError("Gemini unavailable")
+    monkeypatch.setattr(compare_router, "run_pipeline", _fail)
+    resp = client.post("/api/compare", json=_valid_body())
+    assert resp.status_code == 503
+
+
+def test_post_compare_422_on_value_error(monkeypatch):
+    def _fail(req):
+        raise ValueError("country_a and country_b must be different countries.")
+    monkeypatch.setattr(compare_router, "run_pipeline", _fail)
+    resp = client.post("/api/compare", json=_valid_body())
+    assert resp.status_code == 422
 
 
 def test_countries_echoed_from_request():
