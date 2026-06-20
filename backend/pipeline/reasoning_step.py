@@ -1,4 +1,4 @@
-"""Stage 3 — What-if reasoning (AI call #2) and the deterministic validator gate.
+"""Stage 3 — What-if reasoning (single Gemini call) and the deterministic validator gate.
 
 This module owns two things, in this order of importance:
 
@@ -8,10 +8,10 @@ This module owns two things, in this order of importance:
    user intake. Any failure routes to ``SAFE_FALLBACK``; unvalidated model
    output is never returned to the caller. This is the keystone of the pitch.
 
-2. ``generate_reasoning()`` — the Gemini call (gemini-2.5-flash) that produces a
-   Stage 3 result via structured output (``response_schema``). It always runs
-   its result through ``validate_output()`` before returning, so a caller that
-   uses this function can never surface raw model text.
+2. ``generate_insights()`` — makes ONE Gemini call (gemini-2.5-flash) that returns
+   all 7 insights as a JSON array, then runs ``validate_output()`` on each item
+   individually. Per-slot ``SAFE_FALLBACK`` routing is preserved; a single call
+   failure yields 7 SafeFallback items so the dashboard always receives exactly 7.
 
 Stage 3 output contract (CLAUDE.md — match field names exactly):
     fact_used         str  — a real key from the fact bundle
@@ -64,20 +64,27 @@ VALID_SCENARIO_TYPES = frozenset(get_args(ScenarioType))
 
 # JSON Schema for Gemini structured output (response_schema). Kept as a plain
 # dict so it has no SDK dependency and can be reused by tests.
+# The outer array wraps 7 per-insight objects so the single Stage-3 call returns
+# all insights at once.
 STAGE3_RESPONSE_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "scenario_type": {"type": "string", "enum": sorted(VALID_SCENARIO_TYPES)},
-        "fact_used": {"type": "string"},
-        "context_used": {"type": "string"},
-        "connection": {"type": "string"},
-        "consideration": {"type": "string"},
-        "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
-        "confidence_basis": {"type": "string"},
-        "next_action": {"type": "string"},
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "scenario_type": {"type": "string", "enum": sorted(VALID_SCENARIO_TYPES)},
+            "fact_used": {"type": "string"},
+            "context_used": {"type": "string"},
+            "connection": {"type": "string"},
+            "consideration": {"type": "string"},
+            "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+            "confidence_basis": {"type": "string"},
+            "next_action": {"type": "string"},
+        },
+        "required": list(REQUIRED_FIELDS),
+        "propertyOrdering": list(REQUIRED_FIELDS),
     },
-    "required": list(REQUIRED_FIELDS),
-    "propertyOrdering": list(REQUIRED_FIELDS),
+    "minItems": 7,
+    "maxItems": 7,
 }
 
 # ---------------------------------------------------------------------------
@@ -352,88 +359,37 @@ def validate_output(
 # ---------------------------------------------------------------------------
 
 
-def build_prompt(fact_bundle: dict[str, Any], raw_context: Any, scenario_type: str) -> str:
-    """Assemble the Stage 3 what-if prompt from real facts and real intake.
+def build_prompt(
+    fact_bundle: dict[str, Any], raw_context: Any, slot_plan: list[str]
+) -> str:
+    """Assemble the Stage 3 what-if prompt that requests all 7 insights at once.
 
-    The model is told to ground every field in the supplied material and to use
-    only keys present in the bundle — the same things ``validate_output`` later
-    enforces deterministically. ``scenario_type`` frames which what-if angle to
-    reason about; the caller (not the model) owns it, so the prompt states it as
-    a given rather than asking the model to choose.
+    ``slot_plan`` is the ordered list of 7 scenario types produced by
+    ``_slot_plan()``. The prompt injects this list so the model knows exactly
+    what to produce and in which order; the caller stamps each parsed item with
+    the authoritative slot value before passing it to ``validate_output()``.
     """
     real_keys = sorted(_flatten_keys(fact_bundle))
     keys_block = "\n".join(f"  - {k}" for k in real_keys)
     said = _normalize_context(raw_context)
+    slot_lines = "\n".join(f"  {i + 1}. {st}" for i, st in enumerate(slot_plan))
     return (
         "You are the what-if reasoning step in a post-grad job-offer comparator.\n"
-        "Surface ONE concrete consideration that connects a specific assembled "
-        "fact to something the user actually told us. You never state which "
-        "option to choose.\n\n"
-        f"Reason specifically about the '{scenario_type}' scenario.\n\n"
-        "Rules:\n"
+        "Surface SEVEN concrete considerations, one per scenario slot listed below. "
+        "Each connects a specific assembled fact to something the user actually told us. "
+        "You never state which option to choose.\n\n"
+        "Return a JSON array of exactly 7 objects in this exact slot order.\n"
+        "The 'scenario_type' field of object N must match slot N:\n"
+        f"{slot_lines}\n\n"
+        "Rules (apply to every object):\n"
         "  * fact_used MUST be exactly one of the keys listed below.\n"
         "  * context_used MUST be drawn from what the user said.\n"
-        "  * connection MUST reuse real words from both.\n"
+        "  * connection MUST reuse real words from both fact_used and context_used.\n"
         "  * consideration MUST be a specific insight, not generic advice.\n"
         "  * next_action MUST start with an action verb.\n\n"
         f"Available fact keys:\n{keys_block}\n\n"
         f"What the user said:\n{said}\n"
     )
-
-
-def generate_reasoning(
-    fact_bundle: dict[str, Any],
-    raw_context: Any,
-    *,
-    scenario_type: str,
-    client: Any | None = None,
-    model_id: str = MODEL_ID,
-) -> ValidationResult:
-    """Run the Stage 3 Gemini call and validate the result before returning.
-
-    ``scenario_type`` is the what-if angle for this slot, owned by the caller so
-    the pipeline can guarantee its fixed composition (e.g. 2 base, 2 contingency,
-    2 priority_match, 1 synthesis). It is stamped authoritatively onto the parsed
-    output before validation, so the model cannot drift it to an invalid value.
-
-    The Gemini SDK (``google-genai``) is imported lazily so this module — and
-    in particular ``validate_output`` — can be used and tested without the SDK
-    or an API key installed. ``client`` may be injected (tests, reuse); when
-    None a default ``genai.Client()`` is constructed (reads GEMINI_API_KEY /
-    GOOGLE_API_KEY from the environment per the SDK's own resolution).
-
-    The return value's ``output`` is always safe to display: validated model
-    output, or SAFE_FALLBACK on any validation or call failure.
-    """
-    try:
-        from google import genai
-        from google.genai import types
-
-        if client is None:
-            client = genai.Client()
-
-        response = client.models.generate_content(
-            model=model_id,
-            contents=build_prompt(fact_bundle, raw_context, scenario_type),
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=STAGE3_RESPONSE_SCHEMA,
-                temperature=0.2,
-            ),
-        )
-        parsed = getattr(response, "parsed", None)
-        if parsed is None:
-            import json
-            parsed = json.loads(response.text)
-    except Exception as exc:  # SDK missing, network, parse, auth — all fall back.
-        reason = f"Stage 3 generation failed: {type(exc).__name__}: {exc}"
-        return ValidationResult(False, [reason], build_safe_fallback([reason]))
-
-    # The caller owns scenario_type — stamp it so the model can't drift it.
-    if isinstance(parsed, dict):
-        parsed["scenario_type"] = scenario_type
-
-    return validate_output(parsed, fact_bundle, raw_context)
 
 
 # ---------------------------------------------------------------------------
@@ -529,22 +485,64 @@ def generate_insights(
     client: Any | None = None,
     model_id: str = MODEL_ID,
 ) -> list[WhatIfInsight | SafeFallback]:
-    """Produce the 7 Stage 3 insights, ready to drop into DashboardPayload.
+    """Produce the 7 Stage 3 insights with a single Gemini call.
 
-    Orchestrator entry point. Builds the fact bundle once in the
-    ``{"bundle_a": ..., "bundle_b": ...}`` shape that ``validate_output`` expects,
-    runs one Gemini call per slot, and maps every result to the typed union so a
-    failed slot surfaces as a SafeFallback rather than vanishing.
+    Makes one ``client.models.generate_content()`` call that returns all 7
+    insights as a JSON array, then runs ``validate_output()`` on each item
+    individually so per-slot ``SAFE_FALLBACK`` routing is preserved.
+
+    Failure modes:
+    - Top-level Gemini call fails (network, auth, parse) → 7 SafeFallback items.
+    - Response parses but is not a list → 7 SafeFallback items.
+    - Response has fewer than 7 items → missing slots filled with SafeFallback.
+    - Individual item fails validation → that slot becomes SafeFallback.
+
+    The caller always receives exactly 7 items.
     """
+    slot_plan = _slot_plan(bundle_a, bundle_b)
     fact_bundle = {"bundle_a": bundle_a.model_dump(), "bundle_b": bundle_b.model_dump()}
-    insights: list[WhatIfInsight | SafeFallback] = []
-    for i, scenario_type in enumerate(_slot_plan(bundle_a, bundle_b)):
-        result = generate_reasoning(
-            fact_bundle,
-            user_context,
-            scenario_type=scenario_type,
-            client=client,
-            model_id=model_id,
+
+    try:
+        from google import genai
+        from google.genai import types
+
+        if client is None:
+            client = genai.Client()
+
+        response = client.models.generate_content(
+            model=model_id,
+            contents=build_prompt(fact_bundle, user_context, slot_plan),
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=STAGE3_RESPONSE_SCHEMA,
+                temperature=0.2,
+            ),
         )
+        parsed = getattr(response, "parsed", None)
+        if parsed is None:
+            import json
+            parsed = json.loads(response.text)
+    except Exception as exc:  # SDK missing, network, parse, auth — all fall back.
+        reason = f"Stage 3 generation failed: {type(exc).__name__}: {exc}"
+        return [SafeFallback(reason=reason, slot_index=i) for i in range(len(slot_plan))]
+
+    if not isinstance(parsed, list):
+        reason = "Stage 3 response was not a JSON array"
+        return [SafeFallback(reason=reason, slot_index=i) for i in range(len(slot_plan))]
+
+    insights: list[WhatIfInsight | SafeFallback] = []
+    for i, scenario_type in enumerate(slot_plan):
+        if i < len(parsed):
+            item = parsed[i]
+            # The caller owns scenario_type — stamp it so the model can't drift it.
+            if isinstance(item, dict):
+                item["scenario_type"] = scenario_type
+            result = validate_output(item, fact_bundle, user_context)
+        else:
+            result = ValidationResult(
+                False,
+                ["slot missing from Stage 3 response"],
+                build_safe_fallback(["slot missing from Stage 3 response"]),
+            )
         insights.append(to_insight(result, i))
     return insights
