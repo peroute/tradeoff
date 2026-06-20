@@ -1,13 +1,17 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+
 from backend.models.intake_models import CompareRequest
 from backend.models.output_models import DashboardPayload
+from backend.pipeline.orchestrator import run_pipeline
 
 router = APIRouter()
 
 
 @router.post("/compare", response_model=DashboardPayload)
-async def compare(request: CompareRequest):
-    # Stubbed until Stage 2b + orchestrator land — returns a hardcoded,
-    # schema-valid sample payload (self-labeled as sample, not live data).
-    from backend.pipeline.sample_payload import build_sample_payload
-    return build_sample_payload(request)
+def compare(request: CompareRequest) -> DashboardPayload:
+    try:
+        return run_pipeline(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=f"AI pipeline unavailable: {exc}")
