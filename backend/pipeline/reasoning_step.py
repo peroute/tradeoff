@@ -34,7 +34,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable, get_args
 
-from backend.models.ai_models import ScenarioType
+from backend.models.ai_models import SafeFallback, ScenarioType, WhatIfInsight
+from backend.models.output_models import CountryBundle
 
 # ---------------------------------------------------------------------------
 # Contract constants
@@ -433,3 +434,117 @@ def generate_reasoning(
         parsed["scenario_type"] = scenario_type
 
     return validate_output(parsed, fact_bundle, raw_context)
+
+
+# ---------------------------------------------------------------------------
+# Stage 3 orchestration: 7-insight composition + typed-union mapping
+# ---------------------------------------------------------------------------
+
+# The request always yields 7 insights in this composition (CLAUDE.md):
+#   2 base · 2 contingency · 2 priority_match · 1 synthesis
+# "contingency" is a category, not a ScenarioType value — the two contingency
+# slots are filled by _contingency_scenarios() from the granular risk types.
+_FIXED_SLOTS_HEAD = ("base", "base")
+_FIXED_SLOTS_TAIL = ("priority_match", "priority_match", "synthesis")
+
+# Priority order for resolving the two contingency slots. Each entry pairs a
+# granular ScenarioType with a predicate over the two bundles; the most relevant
+# come first. extension_risk has no dedicated curated field, so it is the generic
+# fallback that keeps the list long enough to always yield two distinct values.
+def _has_lottery(b: CountryBundle) -> bool:
+    return bool(b.visa_enrichment and b.visa_enrichment.lottery_required)
+
+
+def _restricted_partner(b: CountryBundle) -> bool:
+    return bool(
+        b.visa_enrichment
+        and b.visa_enrichment.partner_work_rights in {"restricted", "none"}
+    )
+
+
+def _switch_constrained(b: CountryBundle) -> bool:
+    return bool(b.visa_enrichment and b.visa_enrichment.can_switch_employer is False)
+
+
+def _has_pr_timeline(b: CountryBundle) -> bool:
+    return b.visa_route.path_to_residency_years is not None
+
+
+# (scenario_type, predicate) in descending relevance. extension_risk is always
+# eligible so the filtered list never falls below two entries.
+_CONTINGENCY_PRIORITY: tuple[tuple[str, Any], ...] = (
+    ("lottery_risk", lambda a, b: _has_lottery(a) or _has_lottery(b)),
+    ("partner_work", lambda a, b: _restricted_partner(a) or _restricted_partner(b)),
+    ("employer_switch", lambda a, b: _switch_constrained(a) or _switch_constrained(b)),
+    ("pr_timeline", lambda a, b: _has_pr_timeline(a) or _has_pr_timeline(b)),
+    ("extension_risk", lambda a, b: True),
+)
+
+
+def _contingency_scenarios(bundle_a: CountryBundle, bundle_b: CountryBundle) -> list[str]:
+    """Pick the two most relevant contingency scenarios for this comparison.
+
+    Deterministic: walk the priority list, keep scenarios whose signal is present
+    in either bundle, then pad from the remaining priority order so exactly two
+    distinct granular risk types are always returned.
+    """
+    relevant = [st for st, pred in _CONTINGENCY_PRIORITY if pred(bundle_a, bundle_b)]
+    chosen = relevant[:2]
+    if len(chosen) < 2:
+        for st, _ in _CONTINGENCY_PRIORITY:
+            if st not in chosen:
+                chosen.append(st)
+            if len(chosen) == 2:
+                break
+    return chosen
+
+
+def _slot_plan(bundle_a: CountryBundle, bundle_b: CountryBundle) -> list[str]:
+    """The 7 scenario_type slots in order, with contingency slots resolved."""
+    c1, c2 = _contingency_scenarios(bundle_a, bundle_b)
+    return [*_FIXED_SLOTS_HEAD, c1, c2, *_FIXED_SLOTS_TAIL]
+
+
+def to_insight(
+    result: ValidationResult, slot_index: int
+) -> WhatIfInsight | SafeFallback:
+    """Map an internal ValidationResult to the typed DashboardPayload union.
+
+    A passing result becomes a WhatIfInsight; a failure becomes a SafeFallback
+    carrying the validator's reasons and the slot it replaced. (The failed
+    result's ``output`` is the SAFE_FALLBACK dict, whose shape differs from the
+    SafeFallback model — hence this translation rather than a direct splat.)
+    """
+    if result.passed:
+        return WhatIfInsight(**result.output)
+    reason = "; ".join(result.failures) or "validation failed"
+    return SafeFallback(reason=reason, slot_index=slot_index)
+
+
+def generate_insights(
+    bundle_a: CountryBundle,
+    bundle_b: CountryBundle,
+    user_context: Any,
+    *,
+    client: Any | None = None,
+    model_id: str = MODEL_ID,
+) -> list[WhatIfInsight | SafeFallback]:
+    """Produce the 7 Stage 3 insights, ready to drop into DashboardPayload.
+
+    Orchestrator entry point. Builds the fact bundle once in the
+    ``{"bundle_a": ..., "bundle_b": ...}`` shape that ``validate_output`` expects,
+    runs one Gemini call per slot, and maps every result to the typed union so a
+    failed slot surfaces as a SafeFallback rather than vanishing.
+    """
+    fact_bundle = {"bundle_a": bundle_a.model_dump(), "bundle_b": bundle_b.model_dump()}
+    insights: list[WhatIfInsight | SafeFallback] = []
+    for i, scenario_type in enumerate(_slot_plan(bundle_a, bundle_b)):
+        result = generate_reasoning(
+            fact_bundle,
+            user_context,
+            scenario_type=scenario_type,
+            client=client,
+            model_id=model_id,
+        )
+        insights.append(to_insight(result, i))
+    return insights
