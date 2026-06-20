@@ -84,7 +84,7 @@ describe('IntakePage', () => {
   })
 
   it('submits the request and navigates to /dashboard with the payload', async () => {
-    const payload = { bundle_a: {} }
+    const payload = { bundle_a: {} } as unknown as DashboardPayload
     postCompareMock.mockResolvedValue(payload)
 
     const user = await fillValidForm()
@@ -121,6 +121,6 @@ describe('IntakePage', () => {
     const button = await screen.findByRole('button', { name: 'Comparing…' })
     expect(button).toBeDisabled()
 
-    resolve({}) // let the pending request settle
+    resolve({} as unknown as DashboardPayload) // let the pending request settle
   })
 })
