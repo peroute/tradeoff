@@ -155,10 +155,10 @@ def _insights() -> list:
         # Slot 1 — base, country A only (scene-setting; fact_b empty).
         WhatIfInsight(
             scenario_type="base",
-            fact_a="bundle_a.net_takehome_ppp",
+            fact_a="bundle_a.net_annual_usd",
             fact_b=None,
             context_used="long-term residency stability",
-            tradeoff="The US net_takehome_ppp buys more day-to-day, but that take-home only lands while you hold the visa that underpins residency stability.",
+            tradeoff="The US net_annual_usd buys more day-to-day, but that take-home only lands while you hold the visa that underpins residency stability.",
             likely_outcome="On an H-1B you most likely enjoy the higher take-home for the first few years, with the lottery and renewals still unresolved.",
             consideration="The headline US take-home is contingent on clearing the H-1B lottery, so the nominal advantage overstates what is actually guaranteed.",
             confidence="high",
@@ -169,9 +169,9 @@ def _insights() -> list:
         WhatIfInsight(
             scenario_type="base",
             fact_a=None,
-            fact_b="bundle_b.net_takehome_ppp",
+            fact_b="bundle_b.net_annual_usd",
             context_used="long-term residency stability",
-            tradeoff="Germany's net_takehome_ppp is lower, but it arrives on a route whose residency stability is not gated by a lottery.",
+            tradeoff="Germany's net_annual_usd is lower, but it arrives on a route whose residency stability is not gated by a lottery.",
             likely_outcome="On the Blue Card you most likely keep a steadier, if smaller, take-home while the residency clock runs without a draw.",
             consideration="The lower German take-home is near-certain rather than conditional, so comparing it head-to-head with the US figure understates its reliability.",
             confidence="high",
@@ -225,10 +225,10 @@ def _insights() -> list:
         # Slot 7 — synthesis, comparative (the decision moment).
         WhatIfInsight(
             scenario_type="synthesis",
-            fact_a="bundle_a.net_takehome_ppp",
+            fact_a="bundle_a.net_annual_usd",
             fact_b="bundle_b.visa_route.path_to_residency_years",
             context_used="long-term residency stability",
-            tradeoff="The sharpest tradeoff is US net_takehome_ppp against Germany's shorter path_to_residency_years: higher-but-uncertain purchasing power versus lower-but-near-certain residency.",
+            tradeoff="The sharpest tradeoff is US net_annual_usd against Germany's shorter path_to_residency_years: higher-but-uncertain purchasing power versus lower-but-near-certain residency.",
             likely_outcome="The most likely real-world split is more money now in the US with a lottery hanging over it, versus steadier, sooner residency in Germany.",
             consideration="The decision reduces to how you personally weight purchasing power against residency certainty — the numbers alone don't settle it.",
             confidence="medium",

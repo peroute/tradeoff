@@ -42,6 +42,20 @@ function InsightCard({ insight }: { insight: WhatIfInsight }) {
       {/* The non-obvious second-order implication. */}
       <p className="mt-3 text-[13px] leading-relaxed text-ink-muted">{insight.consideration}</p>
 
+      {/* Grounding: each side is pinned to a real fact key + the user's own words. */}
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {insight.fact_a && (
+          <span className="rounded-md bg-path-a/10 px-2 py-1 font-mono text-[10px] text-path-a">
+            {countryA} · {insight.fact_a.replace(/^bundle_[ab]\./, '')}
+          </span>
+        )}
+        {insight.fact_b && (
+          <span className="rounded-md bg-path-b/10 px-2 py-1 font-mono text-[10px] text-path-b">
+            {countryB} · {insight.fact_b.replace(/^bundle_[ab]\./, '')}
+          </span>
+        )}
+      </div>
+
       <div className="mt-3 flex items-start gap-2 rounded-lg border border-path-a/20 bg-path-a/5 px-3 py-2">
         <svg
           width="14"
@@ -65,13 +79,12 @@ function InsightCard({ insight }: { insight: WhatIfInsight }) {
   )
 }
 
-function WithheldCard({ fallback }: { fallback: SafeFallback }) {
+function WithheldCard({ fallback: _fallback }: { fallback: SafeFallback }) {
   return (
     <li className="rounded-xl border border-dashed border-line bg-surface/40 p-4">
       <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
         Insight withheld
       </span>
-      <p className="mt-2 text-[13px] leading-snug text-ink-muted">{fallback.reason}</p>
       <p className="mt-2 text-[11px] leading-snug text-ink-muted">
         We only show reasoning that passes validation against the real fact bundle, so we held this
         one back rather than guess.

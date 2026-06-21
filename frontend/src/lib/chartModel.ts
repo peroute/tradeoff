@@ -50,21 +50,6 @@ function normalizePair(
   return { a: sa / total, b: sb / total }
 }
 
-/**
- * Magnitude normalization for axes read as raw size rather than "who wins"
- * (e.g. cost of living). The larger value maps to 1 (the rim), the other to its
- * proportional share of it, so the higher figure is always the maximal spoke and
- * the smaller one is shown to scale. Missing inputs yield null (skip the spoke).
- */
-function normalizeMagnitude(
-  a: number | null,
-  b: number | null,
-): { a: number | null; b: number | null } {
-  if (a === null && b === null) return { a: null, b: null }
-  const max = Math.max(a ?? 0, b ?? 0)
-  if (max <= 0) return { a: a === null ? null : 0.5, b: b === null ? null : 0.5 }
-  return { a: a === null ? null : a / max, b: b === null ? null : b / max }
-}
 
 const PARTNER_RANK: Record<PartnerOpportunity, number> = {
   full: 2,
@@ -113,7 +98,7 @@ export interface NetComparisonPoint {
 }
 
 export interface ChartModel {
-  /** 5-dimension A-vs-B radar / diverging bar, all on a 0–1 "better" scale. */
+  /** 6-dimension A-vs-B radar / diverging bar, all on a 0–1 "better" scale. */
   comparison: ComparisonPoint[]
   /** Side-by-side income waterfall inputs, each in its own currency. */
   incomeBreakdown: { a: IncomeBreakdown; b: IncomeBreakdown }
@@ -129,11 +114,9 @@ const DIMENSIONS: Array<{
   label: string
   higherIsBetter: boolean
   categorical?: boolean
-  // magnitude axes show raw size (larger = rim), not a higher-is-better share.
-  magnitude?: boolean
 }> = [
   { key: 'net_takehome_usd', label: 'Take-home (USD)', higherIsBetter: true },
-  { key: 'col_relative', label: 'Cost of living', higherIsBetter: true, magnitude: true },
+  { key: 'col_relative', label: 'Cost of living', higherIsBetter: false },
   { key: 'visa_stability_score', label: 'Visa stability', higherIsBetter: true },
   { key: 'pr_timeline_years', label: 'PR speed', higherIsBetter: false },
   { key: 'lottery_risk', label: 'Lottery safety', higherIsBetter: false },
@@ -158,7 +141,7 @@ export function toChartModel(payload: DashboardPayload): ChartModel {
   const { sacrifice_map: sm, bundle_a, bundle_b } = payload
 
   const comparison: ComparisonPoint[] = DIMENSIONS.map(
-    ({ key, label, higherIsBetter, categorical, magnitude }) => {
+    ({ key, label, higherIsBetter, categorical }) => {
       const diff = sm[key]
       const aVal = categorical
         ? partnerRank(diff.country_a_value)
@@ -166,9 +149,7 @@ export function toChartModel(payload: DashboardPayload): ChartModel {
       const bVal = categorical
         ? partnerRank(diff.country_b_value)
         : asNumber(diff.country_b_value)
-      const norm = magnitude
-        ? normalizeMagnitude(aVal, bVal)
-        : normalizePair(aVal, bVal, higherIsBetter)
+      const norm = normalizePair(aVal, bVal, higherIsBetter)
       return {
         key,
         label,

@@ -2,7 +2,7 @@
 
 compute(bundle_a, bundle_b, route_and_outlook) -> SacrificeMap
 
-Converts two fully-assembled CountryBundles into 5 directly-comparable
+Converts two fully-assembled CountryBundles into 6 directly-comparable
 dimension scores so the dashboard can show exactly what you gain and give up
 in each country.
 
@@ -108,14 +108,16 @@ def _partner_diff(bundle_a: CountryBundle, bundle_b: CountryBundle) -> Dimension
     else:
         winner = "tie"
 
+    name_a = bundle_a.country
+    name_b = bundle_b.country
     if val_a is None and val_b is None:
         note = "Partner work rights data unavailable for both countries."
     elif val_a == val_b:
         note = "Both countries offer the same partner work rights."
     elif winner == "a":
-        note = f"Country A offers {val_a} partner work rights vs {val_b or 'unknown'} for Country B."
+        note = f"{name_a} offers {val_a} partner work rights vs {val_b or 'unknown'} for {name_b}."
     else:
-        note = f"Country B offers {val_b} partner work rights vs {val_a or 'unknown'} for Country A."
+        note = f"{name_b} offers {val_b} partner work rights vs {val_a or 'unknown'} for {name_a}."
 
     return DimensionDiff(
         dimension="partner_opportunity",
@@ -132,7 +134,7 @@ def compute(
     bundle_b: CountryBundle,
     route_and_outlook: RouteAndOutlook,
 ) -> SacrificeMap:
-    """Build the 5-dimension sacrifice map from two assembled CountryBundles.
+    """Build the 6-dimension sacrifice map from two assembled CountryBundles.
 
     Called by the orchestrator after Stage 3 validation. All math is
     deterministic and traceable to cited sources except trend_direction
