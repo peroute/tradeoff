@@ -65,13 +65,15 @@ Call #2 takes the concatenated per-country research text and enforces the RouteA
 
 Prompt constraint: only extract from `official_source_registry.json` approved URLs. `source_url` is pinned to that registry list in call #2 and then cross-checked deterministically against BOTH the registry AND call #1 grounding metadata (verdicts: verified / claimed / unapproved → keep / down-one-notch / force-low). Do not state hard salary thresholds or PR timelines as facts — those are validated separately via `visa_rules.json`.
 
-**Stage 3 output schema** (`WhatIfInsight`, Gemini no search, structured output, 7 insights per request: 2 base, 2 contingency, 2 priority_match, 1 synthesis — where "contingency" is a category filled by any of the granular risk scenario types below):
+**Stage 3 output schema** (`WhatIfInsight`, Gemini no search, structured output, 7 insights per request: 2 base, 2 contingency, 2 priority_match, 1 synthesis — where "contingency" is a category filled by any of the granular risk scenario types below). Insights are **tradeoff-native**: each comparative slot pins a country-A fact against the country-B fact and names the gain-vs-sacrifice; the two `base` slots are single-country (one side `null`):
 ```json
 {
   "scenario_type": "base | lottery_risk | extension_risk | employer_switch | partner_work | pr_timeline | priority_match | synthesis",
-  "fact_used": "exact dot-notation key from fact bundle",
+  "fact_a": "exact dot-notation bundle_a.* key, or null on a country-B base slot",
+  "fact_b": "exact dot-notation bundle_b.* key, or null on a country-A base slot",
   "context_used": "verbatim phrase from user_context",
-  "connection": "shared vocabulary between fact_used and context_used",
+  "tradeoff": "what you gain vs. give up; shares vocabulary with the fact key(s) AND context_used",
+  "likely_outcome": "the honest 'what happens if' result, including unfavorable odds",
   "consideration": "the non-obvious second-order implication",
   "confidence": "high | medium | low",
   "confidence_basis": "string — why this confidence level",
@@ -79,17 +81,20 @@ Prompt constraint: only extract from `official_source_registry.json` approved UR
 }
 ```
 
-Prompt constraint: `consideration` must state something NOT immediately obvious from the fact alone. Do not recommend which country to choose.
+**Per-slot coverage (enforced):** the two `base` slots are single-country (slot 1 → `fact_a` only, slot 2 → `fact_b` only); every other slot is comparative and MUST cite a real fact from BOTH bundles, so an insight can never collapse onto one country. The slot→coverage map is derived deterministically by `_slot_coverages()` and injected into both the prompt and the validator.
 
-**`validate_output()`** (already built in `reasoning_step.py`) enforces 6 rules:
-1. `fact_used` ∈ `_flatten_keys(bundle_a) ∪ _flatten_keys(bundle_b)` (via `_flatten_keys()` in `reasoning_step.py`)
-2. `context_used` substring-matches `user_context`
-3. `connection` shares vocabulary with both `fact_used` and `context_used`
-4. `consideration` not in boilerplate phrases list
-5. `next_action` first word is in imperative verb set
-6. `scenario_type` ∈ `{"base", "lottery_risk", "extension_risk", "employer_switch", "partner_work", "pr_timeline", "priority_match", "synthesis"}` (the `ScenarioType` literal in `ai_models.py` is the source of truth)
+Prompt constraint: `consideration` must state something NOT immediately obvious from the fact alone; `likely_outcome` must state the probable result honestly, not a reassurance. Do not recommend which country to choose.
 
-Any failure → `SAFE_FALLBACK`, never show unvalidated model output.
+**`validate_output(output, fact_bundle, raw_context, required_sides)`** (in `reasoning_step.py`) enforces 7 rules; any failure → `SAFE_FALLBACK`:
+1. Coverage + fact validity: each side in `required_sides` is present, and each present `fact_a`/`fact_b` is a real `_flatten_keys` key in the correct namespace (`fact_a` under `bundle_a.*`, `fact_b` under `bundle_b.*`).
+2. `context_used` is grounded in `user_context` (content-word recall ≥ threshold).
+3. `tradeoff` shares vocabulary with each present fact's key tokens (anchors the comparison in the real fact(s); this absorbs the old `connection` rule — context relevance is covered by rule 2).
+4. `likely_outcome` long enough and not boilerplate.
+5. `consideration` long enough and not in the boilerplate phrases list.
+6. `next_action` first word is in the imperative verb set.
+7. `scenario_type` ∈ the `ScenarioType` literal in `ai_models.py` (the source of truth; derived via `get_args`, never re-listed).
+
+Any failure → `SAFE_FALLBACK`, never show unvalidated model output. (`connection` was removed in the tradeoff-native refactor; `fact_used` was split into `fact_a`/`fact_b`.)
 
 `_flatten_keys()` (in `reasoning_step.py`) is the single source of truth — used by both the prompt builder (`build_prompt()`) and the validator (`validate_output()`). They must never diverge.
 

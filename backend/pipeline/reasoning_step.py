@@ -14,18 +14,25 @@ This module owns two things, in this order of importance:
    failure yields 7 SafeFallback items so the dashboard always receives exactly 7.
 
 Stage 3 output contract (CLAUDE.md — match field names exactly):
-    fact_used         str  — a real key from the fact bundle
+    fact_a            str|None — a real ``bundle_a.*`` key (the country-A fact)
+    fact_b            str|None — a real ``bundle_b.*`` key (the country-B fact)
     context_used      str  — something the user actually said in intake
-    connection        str  — shares real vocabulary with fact_used AND context_used
-    consideration     str  — the actual insight, not boilerplate
+    tradeoff          str  — "gain X but sacrifice Y"; shares vocab with the facts AND context
+    likely_outcome    str  — the honest "what happens if" result (esp. risk slots)
+    consideration     str  — the non-obvious second-order implication, not boilerplate
     confidence        str  — "high" | "medium" | "low"
     confidence_basis  str  — why this confidence level
     next_action       str  — a verb-led instruction
 
-Key-convention note: the validator checks ``fact_used`` against the *flattened
-keys the bundle actually emits*, so it is agnostic to whether a value key is
-``min_salary`` or ``min_salary_eur`` (the two conventions in CLAUDE.md). It
-validates against reality, not against the illustrative example.
+Coverage rule: each slot declares which sides it must cite. The two ``base``
+slots are single-country (slot 1 → fact_a only, slot 2 → fact_b only); every
+other slot is comparative and must cite a real fact from BOTH bundles, so an
+insight can never collapse onto one country.
+
+Key-convention note: the validator checks ``fact_a``/``fact_b`` against the
+*flattened keys the bundle actually emits* (namespaced ``bundle_a.*`` /
+``bundle_b.*``), so it is agnostic to whether a value key is ``min_salary`` or
+``min_salary_eur``. It validates against reality, not against the example.
 """
 
 from __future__ import annotations
@@ -44,11 +51,14 @@ from backend.models.output_models import CountryBundle
 
 MODEL_ID = "gemini-2.5-flash"  # Stage 3 model, per CLAUDE.md
 
+# Always-present prose fields, checked for presence + string-ness. fact_a/fact_b
+# are validated separately (per-slot coverage) because which side is required
+# depends on the slot, so they are intentionally NOT in this set.
 REQUIRED_FIELDS = (
     "scenario_type",
-    "fact_used",
     "context_used",
-    "connection",
+    "tradeoff",
+    "likely_outcome",
     "consideration",
     "confidence",
     "confidence_basis",
@@ -67,22 +77,40 @@ VALID_SCENARIO_TYPES = frozenset(get_args(ScenarioType))
 # dict so it has no SDK dependency and can be reused by tests.
 # The outer array wraps 7 per-insight objects so the single Stage-3 call returns
 # all insights at once.
+# Field order the model emits per object. fact_a/fact_b are emitted as "" when a
+# single-country (base) slot does not use that side; the validator treats an
+# empty string as "absent" and normalizes it to None before the model is built.
+_SCHEMA_FIELD_ORDER = (
+    "scenario_type",
+    "fact_a",
+    "fact_b",
+    "context_used",
+    "tradeoff",
+    "likely_outcome",
+    "consideration",
+    "confidence",
+    "confidence_basis",
+    "next_action",
+)
+
 STAGE3_RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "array",
     "items": {
         "type": "object",
         "properties": {
             "scenario_type": {"type": "string", "enum": sorted(VALID_SCENARIO_TYPES)},
-            "fact_used": {"type": "string"},
+            "fact_a": {"type": "string"},
+            "fact_b": {"type": "string"},
             "context_used": {"type": "string"},
-            "connection": {"type": "string"},
+            "tradeoff": {"type": "string"},
+            "likely_outcome": {"type": "string"},
             "consideration": {"type": "string"},
             "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
             "confidence_basis": {"type": "string"},
             "next_action": {"type": "string"},
         },
-        "required": list(REQUIRED_FIELDS),
-        "propertyOrdering": list(REQUIRED_FIELDS),
+        "required": list(_SCHEMA_FIELD_ORDER),
+        "propertyOrdering": list(_SCHEMA_FIELD_ORDER),
     },
     "minItems": 7,
     "maxItems": 7,
@@ -101,6 +129,10 @@ _CONTEXT_RECALL_THRESHOLD = 0.5
 
 # consideration must clear this many content tokens to not read as a stub.
 _MIN_CONSIDERATION_TOKENS = 4
+
+# tradeoff and likely_outcome must each clear this many content tokens.
+_MIN_TRADEOFF_TOKENS = 4
+_MIN_OUTCOME_TOKENS = 3
 
 # Phrases that mark generic boilerplate rather than a real insight. Matched as
 # substrings against the lowercased consideration.
@@ -124,13 +156,16 @@ _BOILERPLATE_MARKERS = (
 # domain. Kept explicit (no POS tagger dependency) so the check is deterministic
 # and inspectable. The first content word of next_action must be in this set.
 _ACTION_VERBS = frozenset({
-    "apply", "ask", "assess", "budget", "calculate", "check", "choose",
-    "compare", "compile", "confirm", "consult", "contact", "convert", "cross-check",
-    "document", "draft", "email", "estimate", "evaluate", "examine", "factor",
-    "file", "gather", "identify", "list", "map", "measure", "model", "negotiate",
-    "note", "obtain", "plan", "prioritize", "quantify", "rank", "reassess",
-    "recalculate", "request", "research", "review", "schedule", "secure",
-    "shortlist", "submit", "trace", "track", "validate", "verify", "weigh",
+    "analyze", "anticipate", "apply", "ask", "assess", "budget", "calculate",
+    "check", "clarify", "choose", "compare", "compile", "confirm", "consult",
+    "contact", "convert", "cross-check", "define", "determine", "develop",
+    "document", "draft", "email", "engage", "ensure", "establish", "estimate",
+    "evaluate", "examine", "explore", "factor", "file", "flag", "gather",
+    "identify", "investigate", "list", "map", "measure", "model", "monitor",
+    "negotiate", "note", "obtain", "outline", "plan", "prepare", "prioritize",
+    "pursue", "quantify", "rank", "reassess", "recalculate", "request",
+    "research", "review", "schedule", "secure", "seek", "shortlist", "study",
+    "submit", "trace", "track", "validate", "verify", "weigh",
 })
 
 # Stopwords removed before any vocabulary-overlap comparison. Deliberately small
@@ -175,9 +210,11 @@ class ValidationResult:
 # model output fails any check. It deliberately does not recommend an option —
 # the AI never states which choice to make (human-in-the-loop boundary).
 SAFE_FALLBACK: dict[str, Any] = {
-    "fact_used": None,
+    "fact_a": None,
+    "fact_b": None,
     "context_used": None,
-    "connection": None,
+    "tradeoff": None,
+    "likely_outcome": None,
     "consideration": (
         "We could not generate a verified what-if insight for this comparison. "
         "Review the assembled facts and visa rules directly, and treat this "
@@ -213,9 +250,9 @@ def _tokenize(text: Any) -> list[str]:
 def _flatten_keys(bundle: Any, prefix: str = "") -> set[str]:
     """Flatten a nested fact bundle into the set of dotted leaf+branch keys.
 
-    Both branch paths (``france_passeport_talent``) and leaf paths
-    (``france_passeport_talent.min_salary``) are included, so ``fact_used`` may
-    reference either a whole fact group or a specific field.
+    Both branch paths (``bundle_a.visa_route``) and leaf paths
+    (``bundle_a.visa_route.path_to_residency_years``) are included, so
+    ``fact_a``/``fact_b`` may reference either a whole fact group or a field.
     """
     keys: set[str] = set()
     if isinstance(bundle, dict):
@@ -249,22 +286,36 @@ def _normalize_context(raw_context: Any) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _present(value: Any) -> bool:
+    """A fact side counts as present only if it is a non-empty string."""
+    return isinstance(value, str) and value.strip() != ""
+
+
 def validate_output(
     output: Any,
     fact_bundle: dict[str, Any],
     raw_context: Any,
+    required_sides: tuple[str, ...] = ("a", "b"),
 ) -> ValidationResult:
     """Deterministically validate a Stage 3 result.
 
+    ``required_sides`` is the slot's coverage demand: ``("a",)`` / ``("b",)`` for
+    the single-country base slots, ``("a", "b")`` for every comparative slot.
+
     Checks (any failure -> SAFE_FALLBACK):
-      * schema:        all required fields present, confidence in the enum.
-      * fact_used:     is a real flattened key of ``fact_bundle``.
+      * schema:        required prose fields present, confidence in the enum,
+                       scenario_type a real ScenarioType value.
+      * coverage:      every required side is present; each present fact_a/fact_b
+                       is a real flattened key in the correct bundle namespace.
       * context_used:  most of its content words appear in what the user said.
-      * connection:    shares real vocabulary with BOTH fact_used and context_used.
+      * tradeoff:      shares real vocabulary with context AND with each present
+                       fact's key tokens; long enough to be a real comparison.
+      * likely_outcome:long enough and not boilerplate.
       * consideration: long enough and not boilerplate.
       * next_action:   verb-led (first content word is an action verb).
 
-    Returns a ``ValidationResult`` whose ``output`` is always safe to display.
+    On success the returned ``output`` has empty fact sides normalized to None,
+    so it can be splatted straight into ``WhatIfInsight``.
     """
     failures: list[str] = []
 
@@ -289,7 +340,7 @@ def validate_output(
                 f"confidence not in {{high, medium, low}}: {output['confidence']!r}"
             )
 
-    # Rule 6 (CLAUDE.md): scenario_type must be a real ScenarioType value.
+    # scenario_type must be a real ScenarioType value (CLAUDE.md rule).
     scenario_type = output.get("scenario_type")
     if not isinstance(scenario_type, str) or scenario_type not in VALID_SCENARIO_TYPES:
         failures.append(f"scenario_type not in ScenarioType: {scenario_type!r}")
@@ -298,18 +349,27 @@ def validate_output(
     if failures:
         return ValidationResult(False, failures, build_safe_fallback(failures))
 
-    fact_used = output["fact_used"]
+    fact_a = output.get("fact_a")
+    fact_b = output.get("fact_b")
     context_used = output["context_used"]
-    connection = output["connection"]
+    tradeoff = output["tradeoff"]
+    likely_outcome = output["likely_outcome"]
     consideration = output["consideration"]
     next_action = output["next_action"]
 
-    # --- fact_used is a real key -------------------------------------------
+    # --- coverage + fact validity ------------------------------------------
     real_keys = _flatten_keys(fact_bundle)
-    if fact_used not in real_keys:
-        failures.append(
-            f"fact_used {fact_used!r} is not a real key in the fact bundle"
-        )
+    present_a, present_b = _present(fact_a), _present(fact_b)
+
+    if "a" in required_sides and not present_a:
+        failures.append("fact_a is required for this slot but missing")
+    if "b" in required_sides and not present_b:
+        failures.append("fact_b is required for this slot but missing")
+
+    if present_a and (fact_a not in real_keys or not fact_a.startswith("bundle_a.")):
+        failures.append(f"fact_a {fact_a!r} is not a real bundle_a.* key")
+    if present_b and (fact_b not in real_keys or not fact_b.startswith("bundle_b.")):
+        failures.append(f"fact_b {fact_b!r} is not a real bundle_b.* key")
 
     # --- context_used was actually said ------------------------------------
     said = set(_tokenize(_normalize_context(raw_context)))
@@ -324,19 +384,26 @@ def validate_output(
                 f"({recalled}/{len(ctx_tokens)} content words match)"
             )
 
-    # --- connection shares vocab with BOTH ---------------------------------
-    conn_tokens = set(_tokenize(connection))
-    fact_vocab = _key_tokens(fact_used) if isinstance(fact_used, str) else set()
-    fact_overlap = conn_tokens & fact_vocab
-    ctx_overlap = conn_tokens & set(ctx_tokens)
-    if len(fact_overlap) < _MIN_OVERLAP_TOKENS:
-        failures.append("connection shares no vocabulary with fact_used")
-    if len(ctx_overlap) < _MIN_OVERLAP_TOKENS:
-        failures.append("connection shares no vocabulary with context_used")
+    # --- tradeoff is grounded in the fact(s) it compares -------------------
+    # Context relevance is already enforced via context_used (rule above); here
+    # we only require the comparison to be anchored in the real fact key(s), so a
+    # tradeoff can never be asserted about a fact it doesn't actually reference.
+    trade_tokens = set(_tokenize(tradeoff))
+    if len(_tokenize(tradeoff)) < _MIN_TRADEOFF_TOKENS:
+        failures.append("tradeoff is too thin to be a real comparison")
+    if present_a and len(trade_tokens & _key_tokens(fact_a)) < _MIN_OVERLAP_TOKENS:
+        failures.append("tradeoff shares no vocabulary with fact_a")
+    if present_b and len(trade_tokens & _key_tokens(fact_b)) < _MIN_OVERLAP_TOKENS:
+        failures.append("tradeoff shares no vocabulary with fact_b")
+
+    # --- likely_outcome is a real "what happens if" ------------------------
+    if any(m in likely_outcome.lower() for m in _BOILERPLATE_MARKERS):
+        failures.append("likely_outcome reads as boilerplate")
+    if len(_tokenize(likely_outcome)) < _MIN_OUTCOME_TOKENS:
+        failures.append("likely_outcome is too thin to model an outcome")
 
     # --- consideration is a real insight -----------------------------------
-    low_consideration = consideration.lower()
-    if any(marker in low_consideration for marker in _BOILERPLATE_MARKERS):
+    if any(marker in consideration.lower() for marker in _BOILERPLATE_MARKERS):
         failures.append("consideration reads as boilerplate")
     if len(_tokenize(consideration)) < _MIN_CONSIDERATION_TOKENS:
         failures.append("consideration is too thin to be a real insight")
@@ -352,7 +419,12 @@ def validate_output(
 
     if failures:
         return ValidationResult(False, failures, build_safe_fallback(failures))
-    return ValidationResult(True, [], dict(output))
+
+    # Normalize empty fact sides to None so the dict splats cleanly into the model.
+    normalized = dict(output)
+    normalized["fact_a"] = fact_a if present_a else None
+    normalized["fact_b"] = fact_b if present_b else None
+    return ValidationResult(True, [], normalized)
 
 
 # ---------------------------------------------------------------------------
@@ -366,29 +438,57 @@ def build_prompt(
     """Assemble the Stage 3 what-if prompt that requests all 7 insights at once.
 
     ``slot_plan`` is the ordered list of 7 scenario types produced by
-    ``_slot_plan()``. The prompt injects this list so the model knows exactly
-    what to produce and in which order; the caller stamps each parsed item with
-    the authoritative slot value before passing it to ``validate_output()``.
+    ``_slot_plan()``. The prompt injects this list — together with each slot's
+    coverage demand — so the model knows exactly what to produce, in which order,
+    and which country/countries each slot must cite. The caller re-derives the
+    same coverage and stamps the authoritative scenario_type before validating.
     """
-    real_keys = sorted(_flatten_keys(fact_bundle))
-    keys_block = "\n".join(f"  - {k}" for k in real_keys)
+    real_keys = _flatten_keys(fact_bundle)
+    a_keys = sorted(k for k in real_keys if k.startswith("bundle_a."))
+    b_keys = sorted(k for k in real_keys if k.startswith("bundle_b."))
+    a_block = "\n".join(f"  - {k}" for k in a_keys)
+    b_block = "\n".join(f"  - {k}" for k in b_keys)
     said = _normalize_context(raw_context)
-    slot_lines = "\n".join(f"  {i + 1}. {st}" for i, st in enumerate(slot_plan))
+
+    coverages = _slot_coverages(slot_plan)
+    slot_lines = []
+    for i, (st, sides) in enumerate(zip(slot_plan, coverages)):
+        if sides == ("a",):
+            cover = "use ONE country-A fact in fact_a; leave fact_b empty"
+        elif sides == ("b",):
+            cover = "use ONE country-B fact in fact_b; leave fact_a empty"
+        else:
+            cover = "use ONE country-A fact in fact_a AND ONE country-B fact in fact_b"
+        slot_lines.append(f"  {i + 1}. {st} — {cover}")
+    slots_block = "\n".join(slot_lines)
+
     return (
         "You are the what-if reasoning step in a post-grad job-offer comparator.\n"
-        "Surface SEVEN concrete considerations, one per scenario slot listed below. "
-        "Each connects a specific assembled fact to something the user actually told us. "
+        "Surface SEVEN concrete considerations, one per scenario slot below. Most "
+        "slots are COMPARATIVE: they weigh a country-A fact against a country-B fact "
+        "and name the real tradeoff (what you gain versus what you give up). "
         "You never state which option to choose.\n\n"
-        "Return a JSON array of exactly 7 objects in this exact slot order.\n"
-        "The 'scenario_type' field of object N must match slot N:\n"
-        f"{slot_lines}\n\n"
+        "Return a JSON array of exactly 7 objects in this exact slot order. The "
+        "'scenario_type' of object N must match slot N, and each slot dictates which "
+        "country/countries you must cite:\n"
+        f"{slots_block}\n\n"
         "Rules (apply to every object):\n"
-        "  * fact_used MUST be exactly one of the keys listed below.\n"
-        "  * context_used MUST be drawn from what the user said.\n"
-        "  * connection MUST reuse real words from both fact_used and context_used.\n"
-        "  * consideration MUST be a specific insight, not generic advice.\n"
+        "  * fact_a (when used) MUST be copied verbatim from the Country-A key list below.\n"
+        "  * fact_b (when used) MUST be copied verbatim from the Country-B key list below.\n"
+        "  * NEVER invent, guess, or modify a key, and NEVER assume the two countries "
+        "expose the same keys — the lists below can differ (e.g. one country may have "
+        "no visa_enrichment.* keys). If a key is not in the list, you may not cite it; "
+        "pick a different listed key for that country instead.\n"
+        "  * For an unused side, return an empty string \"\".\n"
+        "  * context_used MUST be drawn verbatim from what the user said.\n"
+        "  * tradeoff MUST reuse real words from the fact key(s) AND from context_used, "
+        "and state the gain-versus-sacrifice explicitly.\n"
+        "  * likely_outcome MUST state the probable real-world result honestly — "
+        "including unfavorable odds — not a reassurance.\n"
+        "  * consideration MUST be a non-obvious second-order implication, not generic advice.\n"
         "  * next_action MUST start with an action verb.\n\n"
-        f"Available fact keys:\n{keys_block}\n\n"
+        f"Country-A fact keys:\n{a_block}\n\n"
+        f"Country-B fact keys:\n{b_block}\n\n"
         f"What the user said:\n{said}\n"
     )
 
@@ -462,6 +562,25 @@ def _slot_plan(bundle_a: CountryBundle, bundle_b: CountryBundle) -> list[str]:
     return [*_FIXED_SLOTS_HEAD, c1, c2, *_FIXED_SLOTS_TAIL]
 
 
+def _slot_coverages(slot_plan: list[str]) -> list[tuple[str, ...]]:
+    """Per-slot fact-coverage demand, aligned 1:1 with ``slot_plan``.
+
+    The two scene-setting ``base`` slots are single-country — the first cites
+    country A (``("a",)``), the second country B (``("b",)``) — so both countries
+    always appear even before the comparative slots. Every non-base slot is
+    comparative and must cite a fact from BOTH bundles (``("a", "b")``).
+    """
+    coverages: list[tuple[str, ...]] = []
+    base_seen = 0
+    for st in slot_plan:
+        if st == "base":
+            coverages.append(("a",) if base_seen == 0 else ("b",))
+            base_seen += 1
+        else:
+            coverages.append(("a", "b"))
+    return coverages
+
+
 def to_insight(
     result: ValidationResult, slot_index: int
 ) -> WhatIfInsight | SafeFallback:
@@ -501,6 +620,7 @@ def generate_insights(
     The caller always receives exactly 7 items.
     """
     slot_plan = _slot_plan(bundle_a, bundle_b)
+    coverages = _slot_coverages(slot_plan)
     fact_bundle = {"bundle_a": bundle_a.model_dump(), "bundle_b": bundle_b.model_dump()}
 
     try:
@@ -538,7 +658,7 @@ def generate_insights(
             # The caller owns scenario_type — stamp it so the model can't drift it.
             if isinstance(item, dict):
                 item["scenario_type"] = scenario_type
-            result = validate_output(item, fact_bundle, user_context)
+            result = validate_output(item, fact_bundle, user_context, coverages[i])
         else:
             result = ValidationResult(
                 False,

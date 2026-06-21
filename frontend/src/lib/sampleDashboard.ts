@@ -135,19 +135,103 @@ export const sampleDashboard: DashboardPayload = {
     {
       type: 'insight',
       scenario_type: 'base',
-      fact_used: 'bundle_a.net_annual_usd',
+      fact_a: 'bundle_a.net_takehome_ppp',
+      fact_b: null,
       context_used: 'long-term residency stability',
-      connection: 'take-home and residency both depend on holding the visa',
+      tradeoff:
+        'The US net_takehome_ppp buys more day-to-day, but that take-home only lands while you hold the visa that underpins residency stability.',
+      likely_outcome:
+        'On an H-1B you most likely enjoy the higher take-home for the first few years, with the lottery and renewals still unresolved.',
       consideration:
-        'The higher US take-home is contingent on clearing the H-1B lottery, so the nominal gap overstates the guaranteed advantage.',
+        'The headline US take-home is contingent on clearing the H-1B lottery, so the nominal advantage overstates what is actually guaranteed.',
       confidence: 'high',
-      confidence_basis: 'Lottery rate and wage are both curated facts.',
+      confidence_basis: 'Wage and lottery rate are both curated facts.',
       next_action: 'Compare your offer salary against the H-1B prevailing-wage floor.',
     },
     {
+      type: 'insight',
+      scenario_type: 'base',
+      fact_a: null,
+      fact_b: 'bundle_b.net_takehome_ppp',
+      context_used: 'long-term residency stability',
+      tradeoff:
+        "Germany's net_takehome_ppp is lower, but it arrives on a route whose residency stability is not gated by a lottery.",
+      likely_outcome:
+        'On the Blue Card you most likely keep a steadier, if smaller, take-home while the residency clock runs without a draw.',
+      consideration:
+        'The lower German take-home is near-certain rather than conditional, so a head-to-head with the US figure understates its reliability.',
+      confidence: 'high',
+      confidence_basis: 'Wage is curated; Blue Card has no lottery gate.',
+      next_action: 'Budget against the German net take-home to test if the lower figure still meets your needs.',
+    },
+    {
+      type: 'insight',
+      scenario_type: 'lottery_risk',
+      fact_a: 'bundle_a.visa_enrichment.lottery_cumulative_3yr',
+      fact_b: 'bundle_b.visa_enrichment.lottery_required',
+      context_used: 'long-term residency stability',
+      tradeoff:
+        'Choosing the US accepts lottery_cumulative_3yr odds for higher pay; choosing Germany, where no lottery is required, trades pay for a stability you can count on.',
+      likely_outcome:
+        'Over three H-1B cycles the more likely outcome is non-selection (~64%), whereas the Blue Card path has no draw to lose.',
+      consideration:
+        "The lottery converts the US's pay advantage into a coin-flip on stability, so the two options aren't on the same risk footing.",
+      confidence: 'medium',
+      confidence_basis: 'Three-cycle estimate assumes the current selection rate holds.',
+      next_action: 'Draft a backup plan (O-1 or cap-exempt employer) before accepting a US offer.',
+    },
+    {
+      type: 'insight',
+      scenario_type: 'partner_work',
+      fact_a: 'bundle_a.visa_enrichment.partner_work_rights',
+      fact_b: 'bundle_b.visa_enrichment.partner_work_rights',
+      context_used: 'long-term residency stability',
+      tradeoff:
+        "US partner_work_rights are restricted while Germany's are full, so the US pay premium is partly offset by a second income your household may have to forgo.",
+      likely_outcome:
+        'In the US your spouse most likely cannot work until an EAD is granted; in Germany they can work from arrival.',
+      consideration:
+        'Household stability, not just your salary, hinges on partner work rights — a factor the single-earner headline numbers hide.',
+      confidence: 'high',
+      confidence_basis: 'Partner work rights are curated for both routes.',
+      next_action: "Confirm your partner's qualification recognition in Germany.",
+    },
+    {
+      type: 'insight',
+      scenario_type: 'priority_match',
+      fact_a: 'bundle_a.visa_route.path_to_residency_years',
+      fact_b: 'bundle_b.visa_route.path_to_residency_years',
+      context_used: 'long-term residency stability',
+      tradeoff:
+        "The US path_to_residency_years (6) is longer than Germany's (4), so prioritising residency stability favours Germany at the cost of US earning power.",
+      likely_outcome:
+        'If stability is your real priority you most likely reach permanent status two years sooner in Germany, and without a lottery gate.',
+      consideration:
+        'The faster, lottery-free German timeline maps more directly onto a stability-first priority than the higher US salary does.',
+      confidence: 'high',
+      confidence_basis: 'PR timelines are curated for both routes.',
+      next_action: 'Verify the German B1 language requirement for permanent settlement.',
+    },
+    {
       type: 'safe_fallback',
-      reason: 'Generated insight failed validation (fact_used did not match a real fact key).',
+      reason: "next_action is not verb-led (starts with 'understanding')",
       slot_index: 5,
+    },
+    {
+      type: 'insight',
+      scenario_type: 'synthesis',
+      fact_a: 'bundle_a.net_takehome_ppp',
+      fact_b: 'bundle_b.visa_route.path_to_residency_years',
+      context_used: 'long-term residency stability',
+      tradeoff:
+        "The sharpest tradeoff is US net_takehome_ppp against Germany's shorter path_to_residency_years: higher-but-uncertain purchasing power versus lower-but-near-certain residency.",
+      likely_outcome:
+        'The most likely real-world split is more money now in the US with a lottery hanging over it, versus steadier, sooner residency in Germany.',
+      consideration:
+        "The decision reduces to how you personally weight purchasing power against residency certainty — the numbers alone don't settle it.",
+      confidence: 'medium',
+      confidence_basis: 'Synthesis of curated facts; the trade-off weighting is yours.',
+      next_action: 'Rank lottery risk against take-home for yourself before deciding.',
     },
   ],
   sacrifice_map: {
@@ -201,8 +285,8 @@ export const sampleDashboard: DashboardPayload = {
     },
   },
   pipeline_meta: {
-    ai_calls_made: 2,
-    insights_passed: 1,
+    ai_calls_made: 4,
+    insights_passed: 6,
     insights_withheld: 1,
     routing_confidence_a: 'high',
     routing_confidence_b: 'medium',

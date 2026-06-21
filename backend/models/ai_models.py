@@ -48,12 +48,25 @@ class RouteAndOutlook(BaseModel):
 
 
 class WhatIfInsight(BaseModel):
-    """A validated AI-generated insight (output of Stage 3)."""
+    """A validated AI-generated insight (output of Stage 3).
+
+    Tradeoff-native: each comparative insight pins a country-A fact (``fact_a``,
+    a ``bundle_a.*`` key) against the comparable country-B fact (``fact_b``, a
+    ``bundle_b.*`` key), then states the ``tradeoff`` (what you gain vs. give up)
+    and the ``likely_outcome`` (the honest "what happens if" result). The two
+    ``base`` slots are scene-setting and carry a single side (``fact_a`` for the
+    country-A baseline, ``fact_b`` for the country-B baseline); every other slot
+    must cite both. ``connection`` was removed — its fact↔context grounding role
+    is now carried by ``tradeoff`` (validated to share vocabulary with both facts
+    and the user's own words).
+    """
     type: Literal["insight"] = "insight"
     scenario_type: ScenarioType
-    fact_used: str
+    fact_a: str | None = None
+    fact_b: str | None = None
     context_used: str
-    connection: str
+    tradeoff: str
+    likely_outcome: str
     consideration: str
     confidence: ConfidenceLevel
     confidence_basis: str

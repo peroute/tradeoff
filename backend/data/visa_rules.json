@@ -54,7 +54,7 @@
     "source_url": "https://www.gov.uk/graduate-visa",
     "last_verified": "2026-06-21"
   },
-  "canada_express_entry": {
+  "ca_express_entry": {
     "country": "Canada",
     "visa_name": "Express Entry (Federal Skilled Worker)",
     "min_salary": null,
@@ -71,7 +71,7 @@
     "source_url": "https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry.html",
     "last_verified": "2026-05-01"
   },
-  "australia_tss_482": {
+  "au_tss_482": {
     "country": "Australia",
     "visa_name": "Temporary Skill Shortage (TSS) Visa — Subclass 482",
     "min_salary": 73150,
@@ -88,7 +88,24 @@
     "source_url": "https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/temporary-skill-shortage-482",
     "last_verified": "2026-05-01"
   },
-  "germany_fachkraeftezuwanderungsgesetz": {
+  "de_eu_blue_card": {
+    "country": "Germany",
+    "visa_name": "EU Blue Card",
+    "min_salary": 45934.20,
+    "currency": "EUR",
+    "employer_sponsorship_required": false,
+    "can_switch_employer": true,
+    "switch_conditions": "Within the first 12 months an employer change must be notified to the immigration authority (which may object within ~30 days); afterwards no approval is needed",
+    "path_to_pr_years": 2,
+    "lottery_required": false,
+    "lottery_annual_rate": null,
+    "lottery_history": [],
+    "partner_work_rights": "full",
+    "partner_work_notes": "Spouse receives full labour-market access with no separate work permit",
+    "source_url": "https://www.make-it-in-germany.com/en/visa-residence/types/eu-blue-card",
+    "last_verified": "2026-06-21"
+  },
+  "de_skilled_worker": {
     "country": "Germany",
     "visa_name": "Skilled Immigration Act Visa (Fachkräftezuwanderungsgesetz)",
     "min_salary": 45300,
@@ -105,7 +122,7 @@
     "source_url": "https://www.make-it-in-germany.com/en/visa-residence/skilled-workers",
     "last_verified": "2026-05-01"
   },
-  "france_passeport_talent": {
+  "fr_talent_passport": {
     "country": "France",
     "visa_name": "Passeport Talent — Salarié qualifié",
     "min_salary": 38616,

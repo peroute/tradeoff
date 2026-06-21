@@ -26,14 +26,32 @@ function InsightCard({ insight }: { insight: WhatIfInsight }) {
         <ConfidenceBadge level={insight.confidence} />
       </div>
 
-      {/* The non-obvious second-order implication — the reason this panel exists. */}
-      <p className="mt-3 text-[15px] leading-relaxed text-ink">{insight.consideration}</p>
+      {/* The tradeoff — the structured gain-vs-sacrifice across both options. */}
+      <p className="mt-3 text-[15px] font-medium leading-relaxed text-ink">{insight.tradeoff}</p>
 
-      {/* Grounding: every insight is pinned to a real fact and the user's own words. */}
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <span className="rounded-md bg-paper/60 px-2 py-1 font-mono text-[10px] text-ink-muted">
-          fact · {insight.fact_used}
+      {/* Honest "what happens if" — the likely outcome, including unfavorable odds. */}
+      <div className="mt-3 flex items-start gap-2 rounded-lg border border-line bg-paper/40 px-3 py-2">
+        <span className="mt-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
+          Likely
         </span>
+        <p className="text-[13px] leading-snug text-ink">{insight.likely_outcome}</p>
+      </div>
+
+      {/* The non-obvious second-order implication. */}
+      <p className="mt-3 text-[13px] leading-relaxed text-ink-muted">{insight.consideration}</p>
+
+      {/* Grounding: each side is pinned to a real fact key + the user's own words. */}
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {insight.fact_a && (
+          <span className="rounded-md bg-path-a/10 px-2 py-1 font-mono text-[10px] text-path-a">
+            A · {insight.fact_a}
+          </span>
+        )}
+        {insight.fact_b && (
+          <span className="rounded-md bg-path-b/10 px-2 py-1 font-mono text-[10px] text-path-b">
+            B · {insight.fact_b}
+          </span>
+        )}
         <span className="rounded-md bg-paper/60 px-2 py-1 font-mono text-[10px] text-ink-muted">
           you said · “{insight.context_used}”
         </span>
@@ -93,7 +111,8 @@ export default function InsightsPanel({ insights }: InsightsPanelProps) {
         </span>
       </div>
       <p className="mt-1 text-sm text-ink-muted">
-        Second-order implications, each grounded in a cited fact and your stated priorities.
+        Each weighs a country-A fact against the country-B fact, names the tradeoff, and shows the
+        likely outcome — grounded in cited facts and your stated priorities.
       </p>
 
       <ul className="mt-4 space-y-3">
