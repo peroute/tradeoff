@@ -55,11 +55,15 @@ function ComparisonTooltip(
 export default function SacrificeMap({ model, countryA, countryB }: SacrificeMapProps) {
   // Recharts overlays both series off one row per spoke; null shares collapse to 0
   // so the polygon still closes (the tooltip shows the honest "n/a").
-  const data = model.comparison.map((c) => ({
-    ...c,
-    a: c.a ?? 0,
-    b: c.b ?? 0,
-  }))
+  const data = model.comparison
+    // Drop an axis only when BOTH countries are n/a (e.g. PR speed, Lottery often
+    // empty); an axis with one real value is kept so the present side still shows.
+    .filter((c) => c.a !== null || c.b !== null)
+    .map((c) => ({
+      ...c,
+      a: c.a ?? 0,
+      b: c.b ?? 0,
+    }))
 
   return (
     <section
