@@ -78,31 +78,57 @@ Intake (deterministic — parse + validate profile)
 
 ## Run it locally
 
-Two processes: backend on `:8000`, frontend on `:5173`.
+Two processes: backend on `:8000`, frontend on `:5173`. You need **Python 3.11+** and **Node.js 18+**.
 
-> The frontend runs end-to-end with **no API keys** — `POST /api/compare` currently returns a schema-valid, self-labeled **sample payload** while the orchestrator is being wired. The live pipeline (all stages connected) requires both a `GEMINI_API_KEY` and the completed `orchestrator.py`.
-
-### Backend
-
-From the project root (`tradeoff/`):
+### 1 — Clone and enter the repo
 
 ```bash
-python -m venv .venv
-# Windows (PowerShell):
-.venv\Scripts\Activate.ps1
-# macOS / Linux:  source .venv/bin/activate
+git clone <repo-url>
+cd tradeoff
+```
 
+### 2 — Backend
+
+```bash
+# Create and activate a virtual environment
+python -m venv .venv
+
+# Windows (PowerShell)
+.venv\Scripts\Activate.ps1
+# macOS / Linux
+source .venv/bin/activate
+
+# Install dependencies
 pip install -r backend/requirements.txt
 
+# Set up environment variables
 cp .env.example .env        # Windows: copy .env.example .env
-# edit .env → set GEMINI_API_KEY (NUMBEO_API_KEY / BLS_API_KEY optional)
+```
 
+Open `.env` and fill in your keys:
+
+```env
+GEMINI_API_KEY=your_key_here   # required — the full AI pipeline won't run without this
+NUMBEO_API_KEY=                # optional — cost-of-living fallback (World Bank used first)
+BLS_API_KEY=                   # optional — US occupation wages (works without a key, rate-limited)
+CORS_ORIGINS=["http://localhost:5173"]
+ENVIRONMENT=dev
+```
+
+Get a Gemini API key at [aistudio.google.com](https://aistudio.google.com). The free tier is enough for development.
+
+```bash
+# Start the backend
 uvicorn backend.main:app --reload --port 8000
 ```
 
-API: **http://localhost:8000** · interactive docs: **http://localhost:8000/docs**
+- API root: **http://localhost:8000**
+- Interactive docs (Swagger UI): **http://localhost:8000/docs**
+- Health check: **http://localhost:8000/api/health**
 
-### Frontend
+### 3 — Frontend
+
+In a **separate terminal**, from the project root:
 
 ```bash
 cd frontend
@@ -110,7 +136,42 @@ npm install      # first run only
 npm run dev
 ```
 
-App: **http://localhost:5173** (calls the backend at `http://localhost:8000`; override with `VITE_API_BASE_URL`).
+App: **http://localhost:5173**
+
+The frontend talks to the backend at `http://localhost:8000` by default. To change it, set `VITE_API_BASE_URL` in `frontend/.env.local`:
+
+```env
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+### 4 — Try a comparison
+
+With both servers running, open **http://localhost:5173**, fill in the form, and submit. A full comparison makes 4 Gemini API calls and takes ~15–30 seconds.
+
+Or hit the API directly:
+
+```bash
+curl -X POST http://localhost:8000/api/compare \
+  -H "Content-Type: application/json" \
+  -d '{
+    "citizenship": "India",
+    "degree_field": "Computer Science",
+    "career_stage": "new_grad",
+    "country_a": "US",
+    "country_b": "Canada",
+    "user_context": "I care most about long-term residency stability and not being tied to one employer."
+  }'
+```
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `uvicorn: command not found` | Activate the venv first (`.venv\Scripts\Activate.ps1` on Windows) |
+| `GEMINI_API_KEY not set` or 503 from `/api/compare` | Add the key to `backend/.env` |
+| Frontend shows network error | Make sure the backend is running on `:8000` and CORS origins include `:5173` |
+| `422 Unprocessable Entity` | `country_a`/`country_b` must be one of: US, UK, Canada, Australia, Germany, France |
+| Port already in use | Change with `--port 8001` (backend) or `--port 5174` (Vite adds `--port` flag automatically on conflict) |
 
 ---
 

@@ -31,3 +31,4 @@ Thumbs.db
 story.md
 # Local Claude skills (installed locally, not tracked)
 .claude/skills/
+stage-3-what-if-reasoning.md
