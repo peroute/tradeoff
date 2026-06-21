@@ -20,6 +20,23 @@
     "source_url": "https://www.uscis.gov/working-in-the-united-states/h-1b-specialty-occupations",
     "last_verified": "2026-05-01"
   },
+  "us_opt": {
+    "country": "US",
+    "visa_name": "F-1 Optional Practical Training (OPT / STEM OPT)",
+    "min_salary": null,
+    "currency": "USD",
+    "employer_sponsorship_required": false,
+    "can_switch_employer": true,
+    "switch_conditions": "Work authorization flows from F-1 status, not an employer, so you may change employers freely on standard 12-month OPT. The 24-month STEM extension requires the employer to be enrolled in E-Verify and to file a Form I-983 training plan; report any employer change to your DSO within 10 days.",
+    "path_to_pr_years": null,
+    "lottery_required": false,
+    "lottery_annual_rate": null,
+    "lottery_history": [],
+    "partner_work_rights": "none",
+    "partner_work_notes": "F-2 dependents are not authorized to work in the US.",
+    "source_url": "https://www.uscis.gov/working-in-the-united-states/students-and-exchange-visitors/optional-practical-training-opt-for-f-1-students",
+    "last_verified": "2026-06-21"
+  },
   "uk_skilled_worker": {
     "country": "UK",
     "visa_name": "Skilled Worker Visa",
@@ -71,6 +88,23 @@
     "source_url": "https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry.html",
     "last_verified": "2026-05-01"
   },
+  "ca_pgwp": {
+    "country": "Canada",
+    "visa_name": "Post-Graduation Work Permit (PGWP)",
+    "min_salary": null,
+    "currency": "CAD",
+    "employer_sponsorship_required": false,
+    "can_switch_employer": true,
+    "switch_conditions": "Open work permit — work for almost any employer in Canada and change jobs freely. Length matches the study program; master's programs of at least 8 months may receive up to a 3-year permit. Non-renewable. Since Nov 1, 2024 some programs require a qualifying field of study, plus a language-test result. Skilled work on a PGWP builds the experience that feeds Express Entry / Canadian Experience Class toward PR.",
+    "path_to_pr_years": null,
+    "lottery_required": false,
+    "lottery_annual_rate": null,
+    "lottery_history": [],
+    "partner_work_rights": "restricted",
+    "partner_work_notes": "Under rules effective Jan 21, 2025 a spouse/common-law partner can get an open work permit only if the PGWP holder works in a TEER 0 or 1 occupation (or select TEER 2/3 roles on the eligible list).",
+    "source_url": "https://www.canada.ca/en/immigration-refugees-citizenship/services/study-canada/work/after-graduation.html",
+    "last_verified": "2026-06-21"
+  },
   "au_tss_482": {
     "country": "Australia",
     "visa_name": "Temporary Skill Shortage (TSS) Visa — Subclass 482",
@@ -87,6 +121,23 @@
     "partner_work_notes": "Secondary applicant on the same visa gets full work rights",
     "source_url": "https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/temporary-skill-shortage-482",
     "last_verified": "2026-05-01"
+  },
+  "au_485": {
+    "country": "Australia",
+    "visa_name": "Temporary Graduate visa — Subclass 485 (Post-Higher Education Work stream)",
+    "min_salary": null,
+    "currency": "AUD",
+    "employer_sponsorship_required": false,
+    "can_switch_employer": true,
+    "switch_conditions": "No employer tie — full work rights with any employer. Stay length depends on qualification: 2 years (bachelor or master by coursework), 3 years (master by research), 4 years (PhD). Generally must be under 35 at time of application. Bridges to skilled routes (subclass 189/190/482).",
+    "path_to_pr_years": null,
+    "lottery_required": false,
+    "lottery_annual_rate": null,
+    "lottery_history": [],
+    "partner_work_rights": "full",
+    "partner_work_notes": "Family members included on the visa hold the same subclass 485 with full work rights.",
+    "source_url": "https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/temporary-graduate-485",
+    "last_verified": "2026-06-21"
   },
   "de_eu_blue_card": {
     "country": "Germany",
@@ -122,6 +173,23 @@
     "source_url": "https://www.make-it-in-germany.com/en/visa-residence/skilled-workers",
     "last_verified": "2026-05-01"
   },
+  "de_opportunity_card": {
+    "country": "Germany",
+    "visa_name": "Opportunity Card (Chancenkarte)",
+    "min_salary": null,
+    "currency": "EUR",
+    "employer_sponsorship_required": false,
+    "can_switch_employer": true,
+    "switch_conditions": "Points-based job-seeker residence permit valid up to 12 months. No employer sponsor; while searching you may work part-time up to 20 hours/week and take two-week trial jobs with prospective employers. Requires proof of funds (~EUR 1,091/month as of 2025) plus a recognised qualification or 6 points, and basic German (A1) or English (B2). Once you secure a qualifying job you switch to a work permit such as the EU Blue Card or Skilled Worker visa.",
+    "path_to_pr_years": null,
+    "lottery_required": false,
+    "lottery_annual_rate": null,
+    "lottery_history": [],
+    "partner_work_rights": "restricted",
+    "partner_work_notes": "The Opportunity Card is a job-search permit; partner/family work rights generally apply only after you switch to a work residence permit (e.g. EU Blue Card).",
+    "source_url": "https://www.make-it-in-germany.com/en/visa-residence/skilled-immigration-act",
+    "last_verified": "2026-06-21"
+  },
   "fr_talent_passport": {
     "country": "France",
     "visa_name": "Passeport Talent — Salarié qualifié",
@@ -138,5 +206,22 @@
     "partner_work_notes": "Passeport Talent famille card gives partner full and unrestricted work rights",
     "source_url": "https://france-visas.gouv.fr/en/web/france-visas/passeport-talent",
     "last_verified": "2026-05-01"
+  },
+  "fr_aps": {
+    "country": "France",
+    "visa_name": "Residence permit 'Recherche d'emploi / création d'entreprise' (post-study, formerly APS)",
+    "min_salary": null,
+    "currency": "EUR",
+    "employer_sponsorship_required": false,
+    "can_switch_employer": true,
+    "switch_conditions": "Valid 12 months and non-renewable; allows unrestricted work to find a first job or start a business linked to your studies. Requires a French master's (or equivalent) and a valid student permit when applying. Once employed in a related role you switch to a work or Passeport Talent permit.",
+    "path_to_pr_years": null,
+    "lottery_required": false,
+    "lottery_annual_rate": null,
+    "lottery_history": [],
+    "partner_work_rights": "none",
+    "partner_work_notes": "Temporary post-study job-search permit — no dependent/partner work route until you switch to a longer-term work permit.",
+    "source_url": "https://www.service-public.fr/particuliers/vosdroits/F17319",
+    "last_verified": "2026-06-21"
   }
 }

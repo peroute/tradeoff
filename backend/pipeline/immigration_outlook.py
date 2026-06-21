@@ -156,7 +156,7 @@ Find:
 
 1. VISA ROUTE
    - Which work visa applies to this user's citizenship and degree field?
-   - What is the common short name/slug for this visa (e.g. "h1b", "skilled_worker", "eu_blue_card")?
+   - What is the common short name/slug for this visa (e.g. "h1b", "opt", "skilled_worker", "graduate", "express_entry", "pgwp", "485", "eu_blue_card", "opportunity_card", "talent_passport", "aps")? For a recent graduate, prefer the post-study work route (e.g. US "opt", Canada "pgwp", Australia "485") over an employer-sponsored route when both could apply.
    - Does it require employer sponsorship?
    - Is there an annual lottery or cap?
    - What is the key constraint or risk for this user specifically?
@@ -198,7 +198,7 @@ def _build_structure_prompt(raw_research: str, country_a: str, country_b: str) -
 
 Structure this research into the required JSON format. Follow these rules exactly:
 
-VISA SLUG FORMAT: lowercase, underscores, country prefix. Examples: "us_h1b", "de_eu_blue_card", "uk_skilled_worker", "ca_express_entry", "au_tss_482", "fr_talent_passport".
+VISA SLUG FORMAT: lowercase, underscores, country prefix. Examples — skilled/employer routes: "us_h1b", "uk_skilled_worker", "ca_express_entry", "au_tss_482", "de_eu_blue_card", "de_skilled_worker", "fr_talent_passport". Post-study / recent-graduate routes: "us_opt", "uk_graduate", "ca_pgwp", "au_485", "de_opportunity_card", "fr_aps". Use the exact slug that matches the visa the research describes; for a recent graduate prefer the post-study route slug.
 
 APPROVED SOURCE URLS — every source_url you output MUST be copied EXACTLY from the matching country's list below. Pick the single URL that best supports the field. Never output a URL that is not in these lists, never shorten or modify one, and never invent a new one — even if the research text cites another URL.
 {country_a}:
