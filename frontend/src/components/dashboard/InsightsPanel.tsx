@@ -18,15 +18,7 @@ const SCENARIO_LABEL: Record<ScenarioType, string> = {
   synthesis: 'Synthesis',
 }
 
-function InsightCard({
-  insight,
-  countryA,
-  countryB,
-}: {
-  insight: WhatIfInsight
-  countryA: string
-  countryB: string
-}) {
+function InsightCard({ insight }: { insight: WhatIfInsight }) {
   return (
     <li className="rounded-xl border border-line bg-surface-raised/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -49,20 +41,6 @@ function InsightCard({
 
       {/* The non-obvious second-order implication. */}
       <p className="mt-3 text-[13px] leading-relaxed text-ink-muted">{insight.consideration}</p>
-
-      {/* Grounding: each side is pinned to a real fact key + the user's own words. */}
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {insight.fact_a && (
-          <span className="rounded-md bg-path-a/10 px-2 py-1 font-mono text-[10px] text-path-a">
-            {countryA} · {insight.fact_a}
-          </span>
-        )}
-        {insight.fact_b && (
-          <span className="rounded-md bg-path-b/10 px-2 py-1 font-mono text-[10px] text-path-b">
-            {countryB} · {insight.fact_b}
-          </span>
-        )}
-      </div>
 
       <div className="mt-3 flex items-start gap-2 rounded-lg border border-path-a/20 bg-path-a/5 px-3 py-2">
         <svg
@@ -113,7 +91,7 @@ export default function InsightsPanel({ insights, countryA, countryB }: Insights
 
   const renderItem = (item: InsightOrFallback, i: number) =>
     item.type === 'insight' ? (
-      <InsightCard key={`insight-${i}`} insight={item} countryA={countryA} countryB={countryB} />
+      <InsightCard key={`insight-${i}`} insight={item} />
     ) : (
       <WithheldCard key={`fallback-${item.slot_index}-${i}`} fallback={item} />
     )
