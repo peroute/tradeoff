@@ -68,11 +68,11 @@ function GrossBar({ income, accent }: { income: IncomeBreakdown; accent: string 
   )
 }
 
-// ── Block B: take-home, PPP-adjusted (the ONE cross-country-comparable figure) ─
+// ── Block B: take-home in USD (the cross-country-comparable money figure) ─────
 function NetComparison({ model }: { model: ChartModel }) {
   const data = model.netComparison.map((d, i) => ({
     country: d.country,
-    value: d.netTakehomePpp,
+    value: d.netUsd,
     fill: i === 0 ? COLOR_A : COLOR_B,
   }))
 
@@ -125,9 +125,9 @@ export default function WagePanel({ model }: WagePanelProps) {
         <GrossBar income={model.incomeBreakdown.b} accent={COLOR_B} />
       </div>
 
-      {/* Net take-home, PPP-adjusted — the one figure safe to compare directly */}
+      {/* Net take-home in USD — nominal FX, the figure safe to compare directly */}
       <p className="mt-6 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-muted">
-        Take-home, cost-of-living adjusted (PPP) — comparable, NYC = 100 baseline
+        Take-home in USD (nominal FX) — comparable across countries
       </p>
       <NetComparison model={model} />
     </section>

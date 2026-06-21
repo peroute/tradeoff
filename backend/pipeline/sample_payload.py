@@ -34,15 +34,19 @@ from backend.models.output_models import (
 
 STUB_NOTE = "SAMPLE / stub payload — not live data"
 
+# Sample FX (LCU per USD) so the stub's net-USD figures are internally consistent.
+_US_XR = 1.0
+_DE_XR = 0.9239
 
-def _ppp(net_annual_local: float, col_index: float) -> float:
-    """Cost-of-living-adjusted take-home (NYC = 100 baseline)."""
-    return net_annual_local / (col_index / 100)
+
+def _net_usd(net_annual_local: float, xr: float) -> float:
+    """Net take-home converted to nominal USD (market FX)."""
+    return round(net_annual_local / xr, 2)
 
 
 def _bundle_a(country: str) -> CountryBundle:
     net = 97_364.0
-    col_index = 100.0  # New York baseline
+    col_index = 100.0  # US baseline
     return CountryBundle(
         country=country,
         wage=WageData(
@@ -52,13 +56,13 @@ def _bundle_a(country: str) -> CountryBundle:
             soc_code="15-1252",
             precision_note="Occupation-level US wage (BLS OEWS) for SOC 15-1252.",
         ),
-        col=ColData(city="New York", col_index=col_index, monthly_cost_usd=None, source="Numbeo"),
+        col=ColData(city="New York", col_index=col_index, exchange_rate_to_usd=_US_XR, monthly_cost_usd=None, source="Numbeo"),
         tax=TaxData(
             effective_rate=0.2638,
             net_annual_local=net,
             notes="Federal income tax + FICA; state taxes not included.",
         ),
-        net_takehome_ppp=_ppp(net, col_index),
+        net_annual_usd=_net_usd(net, _US_XR),
         visa_route=VisaRoute(
             visa_slug="us_h1b",
             visa_name="H-1B Specialty Occupation",
@@ -99,13 +103,13 @@ def _bundle_b(country: str) -> CountryBundle:
             soc_code=None,
             precision_note="National-average wage (OECD); not occupation-specific.",
         ),
-        col=ColData(city="Berlin", col_index=col_index, monthly_cost_usd=None, source="Numbeo"),
+        col=ColData(city="Berlin", col_index=col_index, exchange_rate_to_usd=_DE_XR, monthly_cost_usd=None, source="Numbeo"),
         tax=TaxData(
             effective_rate=0.3168,
             net_annual_local=net,
             notes="Income tax + approximate employee social contributions.",
         ),
-        net_takehome_ppp=_ppp(net, col_index),
+        net_annual_usd=_net_usd(net, _DE_XR),
         visa_route=VisaRoute(
             visa_slug="de_eu_blue_card",
             visa_name="EU Blue Card (Germany)",
@@ -150,7 +154,7 @@ def _insights() -> list:
     return [
         WhatIfInsight(
             scenario_type="base",
-            fact_used="bundle_a.net_takehome_ppp",
+            fact_used="bundle_a.net_annual_usd",
             context_used="long-term residency stability",
             connection="take-home and residency both depend on holding the visa",
             consideration="The higher US take-home is contingent on clearing the H-1B lottery, so the nominal gap overstates the guaranteed advantage.",
@@ -204,7 +208,7 @@ def _insights() -> list:
         ),
         WhatIfInsight(
             scenario_type="synthesis",
-            fact_used="bundle_a.net_takehome_ppp",
+            fact_used="bundle_a.net_annual_usd",
             context_used="long-term residency stability",
             connection="weighing take-home against residency certainty",
             consideration="The decision reduces to higher-but-uncertain US purchasing power versus lower-but-near-certain German residency — which depends on your risk tolerance, not the numbers alone.",
@@ -216,14 +220,24 @@ def _insights() -> list:
 
 
 def _sacrifice_map(country_a: str, country_b: str) -> SacrificeMap:
+    net_a_usd = _net_usd(97_364.0, _US_XR)
+    net_b_usd = _net_usd(36_895.0, _DE_XR)
     return SacrificeMap(
-        net_takehome_ppp=DimensionDiff(
-            dimension="net_takehome_ppp",
-            country_a_value=_ppp(97_364.0, 100.0),
-            country_b_value=_ppp(36_895.0, 65.3),
-            delta=_ppp(97_364.0, 100.0) - _ppp(36_895.0, 65.3),
+        net_takehome_usd=DimensionDiff(
+            dimension="net_takehome_usd",
+            country_a_value=net_a_usd,
+            country_b_value=net_b_usd,
+            delta=round(net_a_usd - net_b_usd, 2),
             winner="a",
-            note="US leads on cost-of-living-adjusted take-home.",
+            note="Annual take-home converted to USD (nominal, market FX).",
+        ),
+        col_relative=DimensionDiff(
+            dimension="col_relative",
+            country_a_value=100.0,
+            country_b_value=round(65.3 / 100.0 * 100, 1),
+            delta=round(65.3 - 100.0, 1),
+            winner="b",
+            note="Cost of living relative to Country A (A = 100; lower is cheaper).",
         ),
         visa_stability_score=DimensionDiff(
             dimension="visa_stability_score",

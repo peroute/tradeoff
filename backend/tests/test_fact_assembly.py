@@ -16,10 +16,10 @@ from backend.models.output_models import CountryBundle
 from backend.pipeline import fact_assembly
 
 
-def _col(index=80.0, source="World Bank", is_fallback=False, monthly=None) -> CostData:
+def _col(index=80.0, source="World Bank", is_fallback=False, monthly=None, xr=None) -> CostData:
     return CostData(
         city="X", country="X", currency="USD",
-        cost_of_living_index=index, monthly_cost_usd=monthly,
+        cost_of_living_index=index, exchange_rate_to_usd=xr, monthly_cost_usd=monthly,
         source=source, is_mock=False, is_fallback=is_fallback,
     )
 
@@ -111,14 +111,25 @@ def test_us_unknown_field_falls_back_to_oecd(monkeypatch):
     assert bundle.wage.soc_code is None
 
 
-def test_net_takehome_ppp_matches_formula(monkeypatch):
+def test_net_annual_usd_uses_live_exchange_rate(monkeypatch):
     monkeypatch.setattr(oecd, "fetch_oecd_wages", lambda c: _oecd_wage(country="Germany", gross=54000.0))
-    monkeypatch.setattr(worldbank, "fetch_national_col", lambda c: _col(index=75.9))
+    monkeypatch.setattr(worldbank, "fetch_national_col", lambda c: _col(index=75.9, xr=0.92))
 
     bundle = fact_assembly.assemble(_profile(), "Germany", _stub_route("zz_unknown"))
     expected_net = tax.compute_net_takehome(54000.0, "Germany").net_annual
-    assert bundle.col.col_index == pytest.approx(75.9)
-    assert bundle.net_takehome_ppp == pytest.approx(expected_net / (75.9 / 100))
+    assert bundle.col.exchange_rate_to_usd == pytest.approx(0.92)
+    assert bundle.net_annual_usd == pytest.approx(round(expected_net / 0.92, 2))
+
+
+def test_net_annual_usd_falls_back_to_currency_rate(monkeypatch):
+    # CoL source carries no live FX (xr=None) -> per-currency fallback is used.
+    monkeypatch.setattr(oecd, "fetch_oecd_wages", lambda c: _oecd_wage(country="Germany", gross=54000.0))
+    monkeypatch.setattr(worldbank, "fetch_national_col", lambda c: _col(index=75.9, xr=None))
+
+    bundle = fact_assembly.assemble(_profile(), "Germany", _stub_route("zz_unknown"))
+    expected_net = tax.compute_net_takehome(54000.0, "Germany").net_annual
+    xr = fact_assembly._FALLBACK_XR["EUR"]
+    assert bundle.net_annual_usd == pytest.approx(round(expected_net / xr, 2))
 
 
 def test_tax_mapping_matches_compute(monkeypatch):
@@ -132,11 +143,12 @@ def test_tax_mapping_matches_compute(monkeypatch):
 
 def test_col_primary_uses_world_bank(monkeypatch):
     monkeypatch.setattr(oecd, "fetch_oecd_wages", lambda c: _oecd_wage(country="Canada", currency="CAD"))
-    monkeypatch.setattr(worldbank, "fetch_national_col", lambda c: _col(index=90.6))
+    monkeypatch.setattr(worldbank, "fetch_national_col", lambda c: _col(index=90.6, xr=1.37))
 
     bundle = fact_assembly.assemble(_profile(), "Canada", _stub_route("zz_unknown"))
     assert bundle.col.city is None                       # national figure, not city-specific
     assert bundle.col.col_index == pytest.approx(90.6)
+    assert bundle.col.exchange_rate_to_usd == pytest.approx(1.37)  # carried through from CostData
     assert bundle.col.source == "World Bank"
     assert bundle.col.col_source == "national_ppp"
     assert bundle.col.is_fallback is False

@@ -104,6 +104,7 @@ export interface WageData {
 export interface ColData {
   city: string | null
   col_index: number | null
+  exchange_rate_to_usd: number | null
   monthly_cost_usd: number | null
   source: string
   col_source: 'city' | 'national_ppp'
@@ -122,13 +123,14 @@ export interface CountryBundle {
   wage: WageData
   col: ColData
   tax: TaxData
-  net_takehome_ppp: number | null
+  net_annual_usd: number | null
   visa_route: VisaRoute
   visa_enrichment: VisaEnrichment | null
 }
 
 export type SacrificeDimension =
-  | 'net_takehome_ppp'
+  | 'net_takehome_usd'
+  | 'col_relative'
   | 'visa_stability_score'
   | 'pr_timeline_years'
   | 'lottery_risk'
@@ -144,7 +146,8 @@ export interface DimensionDiff {
 }
 
 export interface SacrificeMap {
-  net_takehome_ppp: DimensionDiff
+  net_takehome_usd: DimensionDiff
+  col_relative: DimensionDiff
   visa_stability_score: DimensionDiff
   pr_timeline_years: DimensionDiff
   lottery_risk: DimensionDiff

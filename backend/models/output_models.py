@@ -45,6 +45,7 @@ class WageData(BaseModel):
 class ColData(BaseModel):
     city: str | None                          # None for national figures (col_source="national_ppp")
     col_index: float | None                   # US/NYC = 100 baseline
+    exchange_rate_to_usd: float | None = None # LCU per USD; carried for transparency + net-USD conversion
     monthly_cost_usd: float | None
     source: str = "World Bank"
     col_source: Literal["city", "national_ppp"] = "national_ppp"
@@ -64,7 +65,7 @@ class CountryBundle(BaseModel):
     wage: WageData
     col: ColData
     tax: TaxData
-    net_takehome_ppp: float | None
+    net_annual_usd: float | None              # net take-home converted to nominal USD (market FX)
     visa_route: VisaRoute
     visa_enrichment: VisaEnrichment | None
 
@@ -80,8 +81,9 @@ class DimensionDiff(BaseModel):
 
 
 class SacrificeMap(BaseModel):
-    """5-dimension cross-country comparison (all deterministic)."""
-    net_takehome_ppp: DimensionDiff
+    """6-dimension cross-country comparison (all deterministic)."""
+    net_takehome_usd: DimensionDiff
+    col_relative: DimensionDiff
     visa_stability_score: DimensionDiff
     pr_timeline_years: DimensionDiff
     lottery_risk: DimensionDiff

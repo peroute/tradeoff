@@ -18,10 +18,10 @@ vi.mock('recharts', async (importOriginal) => {
 const model = toChartModel(sampleDashboard)
 
 describe('WagePanel', () => {
-  it('distinguishes the non-comparable gross from the comparable PPP take-home', () => {
+  it('distinguishes the non-comparable gross from the comparable USD take-home', () => {
     render(<WagePanel model={model} countryA="US" countryB="Germany" />)
     expect(screen.getByText(/not comparable across countries/i)).toBeInTheDocument()
-    expect(screen.getByText(/comparable, NYC = 100 baseline/i)).toBeInTheDocument()
+    expect(screen.getByText(/take-home in usd \(nominal fx\)/i)).toBeInTheDocument()
   })
 
   it('labels each country gross bar with its currency and effective tax rate', () => {

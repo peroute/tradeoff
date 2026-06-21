@@ -4,7 +4,10 @@
 
 import type { DashboardPayload } from '../types'
 
-const ppp = (netLocal: number, colIndex: number) => netLocal / (colIndex / 100)
+// Sample FX (LCU per USD), mirroring backend/pipeline/sample_payload.py.
+const US_XR = 1.0
+const DE_XR = 0.9239
+const netUsd = (netLocal: number, xr: number) => Math.round((netLocal / xr) * 100) / 100
 
 export const sampleDashboard: DashboardPayload = {
   bundle_a: {
@@ -19,6 +22,7 @@ export const sampleDashboard: DashboardPayload = {
     col: {
       city: 'New York',
       col_index: 100,
+      exchange_rate_to_usd: US_XR,
       monthly_cost_usd: null,
       source: 'Numbeo',
       col_source: 'city',
@@ -30,7 +34,7 @@ export const sampleDashboard: DashboardPayload = {
       net_annual_local: 97364,
       notes: 'Federal income tax + FICA; state taxes not included.',
     },
-    net_takehome_ppp: ppp(97364, 100),
+    net_annual_usd: netUsd(97364, US_XR),
     visa_route: {
       visa_slug: 'us_h1b',
       visa_name: 'H-1B Specialty Occupation',
@@ -70,6 +74,7 @@ export const sampleDashboard: DashboardPayload = {
     col: {
       city: 'Berlin',
       col_index: 65.3,
+      exchange_rate_to_usd: DE_XR,
       monthly_cost_usd: null,
       source: 'Numbeo',
       col_source: 'city',
@@ -81,7 +86,7 @@ export const sampleDashboard: DashboardPayload = {
       net_annual_local: 36895,
       notes: 'Income tax + approximate employee social contributions.',
     },
-    net_takehome_ppp: ppp(36895, 65.3),
+    net_annual_usd: netUsd(36895, DE_XR),
     visa_route: {
       visa_slug: 'de_eu_blue_card',
       visa_name: 'EU Blue Card (Germany)',
@@ -130,7 +135,7 @@ export const sampleDashboard: DashboardPayload = {
     {
       type: 'insight',
       scenario_type: 'base',
-      fact_used: 'bundle_a.net_takehome_ppp',
+      fact_used: 'bundle_a.net_annual_usd',
       context_used: 'long-term residency stability',
       connection: 'take-home and residency both depend on holding the visa',
       consideration:
@@ -146,13 +151,21 @@ export const sampleDashboard: DashboardPayload = {
     },
   ],
   sacrifice_map: {
-    net_takehome_ppp: {
-      dimension: 'net_takehome_ppp',
-      country_a_value: ppp(97364, 100),
-      country_b_value: ppp(36895, 65.3),
-      delta: ppp(97364, 100) - ppp(36895, 65.3),
+    net_takehome_usd: {
+      dimension: 'net_takehome_usd',
+      country_a_value: netUsd(97364, US_XR),
+      country_b_value: netUsd(36895, DE_XR),
+      delta: Math.round((netUsd(97364, US_XR) - netUsd(36895, DE_XR)) * 100) / 100,
       winner: 'a',
-      note: 'US leads on cost-of-living-adjusted take-home.',
+      note: 'Annual take-home converted to USD (nominal, market FX).',
+    },
+    col_relative: {
+      dimension: 'col_relative',
+      country_a_value: 100,
+      country_b_value: 65.3,
+      delta: -34.7,
+      winner: 'b',
+      note: 'Cost of living relative to Country A (A = 100; lower is cheaper).',
     },
     visa_stability_score: {
       dimension: 'visa_stability_score',

@@ -19,8 +19,12 @@ ourselves from two live indicators:
 
 Their ratio is the price level relative to the US. The US ratio is 1.0 by
 construction (both indicators are 1.0 for the US), so we scale to a US = 100
-index:  cost_of_living_index = PLI * 100. This keeps the same NYC/US = 100
-baseline the rest of the pipeline assumes, so net_takehome_ppp math is unchanged.
+index:  cost_of_living_index = PLI * 100. This keeps the same US = 100 baseline
+the rest of the pipeline assumes for the cost-of-living comparison.
+
+We also surface the raw exchange rate (PA.NUS.FCRF, LCU per US$) on the returned
+CostData so fact_assembly can convert net take-home to nominal USD without a
+second FX source.
 
 LIVE PATH
 ---------
@@ -70,6 +74,18 @@ _FALLBACK_INDEX: dict[str, float] = {
     "France": 77.6,
 }
 
+# Curated fallback exchange rate (LCU per US$), World Bank PA.NUS.FCRF ~2024
+# period averages, rounded. Used only when the live FX read is unavailable so
+# net-USD conversion (fact_assembly) still has a rate to work with.
+_FALLBACK_XR: dict[str, float] = {
+    "US": 1.0,
+    "UK": 0.7824,
+    "Canada": 1.3697,
+    "Australia": 1.5163,
+    "Germany": 0.9239,
+    "France": 0.9239,
+}
+
 
 def fetch_national_col(country: str) -> CostData:
     """National price-level index (US = 100) for `country`.
@@ -106,6 +122,7 @@ def _fetch_live(country: str, meta: dict[str, str]) -> CostData:
         country=country,
         currency=meta["currency"],
         cost_of_living_index=round(index, 1),
+        exchange_rate_to_usd=round(xr, 6),  # LCU per US$ (US == 1.0 by construction)
         source="World Bank",
         is_mock=False,
         is_fallback=False,
@@ -153,16 +170,19 @@ def _fallback(country: str, meta: dict[str, str] | None) -> CostData:
     if meta is not None:
         currency = meta["currency"]
         index = _FALLBACK_INDEX[country]
+        xr = _FALLBACK_XR[country]
     else:
         # Unsupported destination: keep the pipeline alive with a neutral index.
         currency = "USD"
         index = 70.0
+        xr = 1.0
 
     return CostData(
         city=country,
         country=country,
         currency=currency,
         cost_of_living_index=index,
+        exchange_rate_to_usd=xr,
         source="World Bank (fallback)",
         is_mock=False,
         is_fallback=True,
