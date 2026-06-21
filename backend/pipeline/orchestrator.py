@@ -17,8 +17,8 @@ from backend.pipeline import fact_assembly, immigration_outlook, sacrifice_diff
 from backend.pipeline.intake import parse_and_validate
 from backend.pipeline.reasoning_step import generate_insights
 
-# 3 Stage-2b calls (2 per-country research + 1 structure) + 7 Stage-3 slots × 1 call each
-_AI_CALLS_PER_RUN = 10
+# 3 Stage-2b calls (2 per-country research + 1 structure) + 1 Stage-3 call = 4 total
+_AI_CALLS_PER_RUN = 4
 
 
 def run_pipeline(request: CompareRequest) -> DashboardPayload:
@@ -73,7 +73,8 @@ def run_pipeline(request: CompareRequest) -> DashboardPayload:
             fact_sources={
                 f"wage_{bundle_a.country}": bundle_a.wage.source,
                 f"wage_{bundle_b.country}": bundle_b.wage.source,
-                "cost_of_living": "Numbeo (mock)",
+                f"cost_of_living_{bundle_a.country}": bundle_a.col.source,
+                f"cost_of_living_{bundle_b.country}": bundle_b.col.source,
                 "tax": "curated tax_rates.json",
                 "visa_routing": "Gemini + Google Search (Stage 2b)",
                 "visa_enrichment": "curated visa_rules.json",
