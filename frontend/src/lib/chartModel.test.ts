@@ -79,6 +79,12 @@ describe('toChartModel', () => {
     // A = 100, B = 80 → B is cheaper → B is further out; shares sum to 1
     expect(col.b).toBeGreaterThan(col.a!)
     expect(col.a! + col.b!).toBeCloseTo(1)
+    // The worse (pricier) value must stay a VISIBLE spoke, not collapse to the
+    // centre — inverse-weighted share, not zero. (Regression: 100 vs 80 used to
+    // render the 100 at radius 0.)
+    expect(col.a).toBeGreaterThan(0)
+    expect(col.a).toBeCloseTo(80 / 180) // b / (a + b)
+    expect(col.b).toBeCloseTo(100 / 180) // a / (a + b)
     expect(col.aRaw).toBe(100) // raw values preserved for tooltips
     expect(col.bRaw).toBe(80)
   })
@@ -88,6 +94,9 @@ describe('toChartModel', () => {
     const pr = comparison.find((c) => c.key === 'pr_timeline_years')!
     expect(pr.b).toBeGreaterThan(pr.a!) // 3yr (B) beats 6yr (A)
     expect(pr.a! + pr.b!).toBeCloseTo(1)
+    expect(pr.a).toBeGreaterThan(0) // worse (6yr) stays visible, not at the centre
+    expect(pr.a).toBeCloseTo(3 / 9) // b / (a + b)
+    expect(pr.b).toBeCloseTo(6 / 9) // a / (a + b)
   })
 
   it('ranks the categorical partner dimension (full > restricted > none)', () => {
