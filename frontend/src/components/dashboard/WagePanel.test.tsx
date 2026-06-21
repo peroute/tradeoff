@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 
 import WagePanel from './WagePanel'
 import { toChartModel } from '../../lib/chartModel'
-import { sampleDashboard } from '../../lib/sampleDashboard'
+import { dashboardFixture } from '../../test/fixtures/dashboardFixture'
 
 vi.mock('recharts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('recharts')>()
@@ -15,7 +15,7 @@ vi.mock('recharts', async (importOriginal) => {
   }
 })
 
-const model = toChartModel(sampleDashboard)
+const model = toChartModel(dashboardFixture)
 
 describe('WagePanel', () => {
   it('distinguishes the non-comparable gross from the comparable USD take-home', () => {

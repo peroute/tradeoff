@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 
 import SacrificeMap from './SacrificeMap'
 import { toChartModel } from '../../lib/chartModel'
-import { sampleDashboard } from '../../lib/sampleDashboard'
+import { dashboardFixture } from '../../test/fixtures/dashboardFixture'
 
 // Recharts' ResponsiveContainer measures its parent, which is 0×0 in jsdom and
 // suppresses rendering. Give it fixed dimensions so the chart mounts.
@@ -17,7 +17,7 @@ vi.mock('recharts', async (importOriginal) => {
   }
 })
 
-const model = toChartModel(sampleDashboard)
+const model = toChartModel(dashboardFixture)
 
 describe('SacrificeMap', () => {
   it('renders the comparison heading and the normalization caveat', () => {

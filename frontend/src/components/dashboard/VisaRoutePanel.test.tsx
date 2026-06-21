@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
 import VisaRoutePanel, { VISA_ACCENT_A } from './VisaRoutePanel'
-import { sampleDashboard } from '../../lib/sampleDashboard'
+import { dashboardFixture } from '../../test/fixtures/dashboardFixture'
 
-const enrichedBundle = sampleDashboard.bundle_a
+const enrichedBundle = dashboardFixture.bundle_a
 
 describe('VisaRoutePanel', () => {
   it('renders curated enrichment rows when visa_enrichment is present', () => {

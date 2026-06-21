@@ -1,15 +1,18 @@
-// Sample DashboardPayload mirroring backend/pipeline/sample_payload.py
-// (US-vs-Germany). Used as the /dashboard fallback when no live payload is in
-// router state, and as the fixture for chart component tests. NOT live data.
+// TEST-ONLY fixture. A static DashboardPayload (US-vs-Germany) mirroring
+// backend/pipeline/sample_payload.py, used solely by chart/component unit tests.
+//
+// This deliberately lives under src/test/ — NOT src/lib/ — so application code
+// cannot import it. The dashboard must only ever render a live pipeline result;
+// there is no canned fallback in the running app.
 
-import type { DashboardPayload } from '../types'
+import type { DashboardPayload } from '../../types'
 
 // Sample FX (LCU per USD), mirroring backend/pipeline/sample_payload.py.
 const US_XR = 1.0
 const DE_XR = 0.9239
 const netUsd = (netLocal: number, xr: number) => Math.round((netLocal / xr) * 100) / 100
 
-export const sampleDashboard: DashboardPayload = {
+export const dashboardFixture: DashboardPayload = {
   bundle_a: {
     country: 'US',
     wage: {
@@ -295,7 +298,7 @@ export const sampleDashboard: DashboardPayload = {
       cost_of_living: 'Numbeo (mock)',
       tax: 'curated tax_rates.json',
       visa: 'curated visa_rules.json',
-      note: 'SAMPLE / stub payload — not live data',
+      note: 'TEST FIXTURE — not live data',
     },
   },
 }

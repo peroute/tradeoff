@@ -1,4 +1,5 @@
-import { useLocation } from 'react-router-dom'
+import { useEffect, useMemo } from 'react'
+import { Navigate, useLocation } from 'react-router-dom'
 
 import AmbientBackground from '../components/shared/AmbientBackground'
 import HumanBoundaryBanner from '../components/dashboard/HumanBoundaryBanner'
@@ -12,8 +13,13 @@ import VisaRoutePanel, {
 } from '../components/dashboard/VisaRoutePanel'
 import WagePanel from '../components/dashboard/WagePanel'
 import { toChartModel } from '../lib/chartModel'
-import { sampleDashboard } from '../lib/sampleDashboard'
 import type { DashboardPayload } from '../types'
+
+// Where a freshly-computed comparison is stashed so a refresh / back-forward on
+// /dashboard keeps showing THIS run instead of dropping the user. Scoped to the
+// tab (sessionStorage) and cleared when the tab closes — it is never a substitute
+// for a live result, only a short-lived cache of the one the user just generated.
+const PAYLOAD_STORAGE_KEY = 'tradeoff:dashboardPayload'
 
 function SectionEyebrow({ children }: { children: React.ReactNode }) {
   return (
@@ -24,10 +30,39 @@ function SectionEyebrow({ children }: { children: React.ReactNode }) {
 }
 
 export default function DashboardPage() {
-  // IntakePage navigates here with the live payload in router state. Falling back
-  // to the sample fixture lets the dashboard render standalone (direct visit / dev).
+  // IntakePage navigates here with the live payload in router state. The dashboard
+  // NEVER renders canned data: if there is no live result (direct visit, shared
+  // link, or router state lost on refresh) we rehydrate the one saved this session,
+  // and if that is also absent we send the user back to run a real comparison.
   const location = useLocation()
-  const payload = (location.state as { payload?: DashboardPayload } | null)?.payload ?? sampleDashboard
+  const statePayload = (location.state as { payload?: DashboardPayload } | null)?.payload ?? null
+
+  const payload = useMemo<DashboardPayload | null>(() => {
+    if (statePayload) return statePayload
+    try {
+      const stored = sessionStorage.getItem(PAYLOAD_STORAGE_KEY)
+      return stored ? (JSON.parse(stored) as DashboardPayload) : null
+    } catch {
+      return null
+    }
+  }, [statePayload])
+
+  // Persist a freshly-navigated payload so a later refresh keeps it. A side
+  // effect, so it runs in useEffect rather than during render.
+  useEffect(() => {
+    if (!statePayload) return
+    try {
+      sessionStorage.setItem(PAYLOAD_STORAGE_KEY, JSON.stringify(statePayload))
+    } catch {
+      // sessionStorage unavailable (private mode / quota) — non-fatal; the live
+      // result still renders this visit, only the refresh-survival is lost.
+    }
+  }, [statePayload])
+
+  // No live result and nothing cached → return to intake instead of showing data.
+  if (!payload) {
+    return <Navigate to="/" replace />
+  }
 
   const model = toChartModel(payload)
   const countryA = payload.bundle_a.country
