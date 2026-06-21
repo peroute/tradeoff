@@ -3,8 +3,6 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-# Still to implement (other tasks): CountryBundle
-
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()

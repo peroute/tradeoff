@@ -75,7 +75,7 @@ def _visa_stability_score(
         else 0.0
     )
 
-    return round(max(0.0, base - trend_penalty - lottery_penalty) / 2.5, 4)
+    return round(min(1.0, max(0.0, base - trend_penalty - lottery_penalty) / 3.0), 4)
 
 
 def _lottery_risk(bundle: CountryBundle) -> float | None:
@@ -108,7 +108,9 @@ def _partner_diff(bundle_a: CountryBundle, bundle_b: CountryBundle) -> Dimension
     else:
         winner = "tie"
 
-    if val_a == val_b:
+    if val_a is None and val_b is None:
+        note = "Partner work rights data unavailable for both countries."
+    elif val_a == val_b:
         note = "Both countries offer the same partner work rights."
     elif winner == "a":
         note = f"Country A offers {val_a} partner work rights vs {val_b or 'unknown'} for Country B."
