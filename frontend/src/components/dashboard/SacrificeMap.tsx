@@ -72,8 +72,7 @@ export default function SacrificeMap({ model, countryA, countryB }: SacrificeMap
     >
       <h2 className="font-display text-lg font-semibold text-ink">Where each path wins</h2>
       <p className="mt-1 text-sm text-ink-muted">
-        Each axis is normalized 0–1 relative to the two options (further out is better, except Cost of
-        living, which shows relative magnitude). Hover a point for the real figure.
+        Each axis is normalized 0–1 — further out is better. Hover a point for the real figure.
       </p>
 
       <div className="mt-4 h-80 w-full">

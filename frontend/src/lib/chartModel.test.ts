@@ -73,11 +73,14 @@ describe('toChartModel', () => {
     ])
   })
 
-  it('shows the higher cost of living as the maximal spoke, the other to scale', () => {
+  it('puts the cheaper country further out on the cost-of-living axis (lower cost = better)', () => {
     const { comparison } = toChartModel(payload())
     const col = comparison.find((c) => c.key === 'col_relative')!
-    expect(col.a).toBe(1) // A at 100 is the higher cost → maxed out at the rim
-    expect(col.b).toBeCloseTo(0.8) // B at 80 shown proportionally (80 / 100)
+    // A = 100, B = 80 → B is cheaper → B is further out; shares sum to 1
+    expect(col.b).toBeGreaterThan(col.a!)
+    expect(col.a! + col.b!).toBeCloseTo(1)
+    expect(col.aRaw).toBe(100) // raw values preserved for tooltips
+    expect(col.bRaw).toBe(80)
   })
 
   it('inverts lower-is-better dimensions so the smaller raw value scores higher', () => {
