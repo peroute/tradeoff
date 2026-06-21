@@ -281,6 +281,42 @@ def _normalize_context(raw_context: Any) -> str:
     return ""
 
 
+# Prose fields a user reads, where a stray generic "Country A/B" must be rewritten
+# to the real destination name. fact_a/fact_b are deliberately excluded — those are
+# the bundle_a.*/bundle_b.* key contract the validator checks, not human prose.
+_RELABEL_FIELDS = (
+    "tradeoff",
+    "likely_outcome",
+    "consideration",
+    "next_action",
+    "confidence_basis",
+    "context_used",
+)
+
+# Matches "Country A"/"country a" and the possessive "Country A's" (the \b after
+# the letter sits before the apostrophe, so the "'s" is preserved).
+_COUNTRY_A_RE = re.compile(r"\bcountry\s+a\b", re.IGNORECASE)
+_COUNTRY_B_RE = re.compile(r"\bcountry\s+b\b", re.IGNORECASE)
+
+
+def _relabel_countries(item: Any, country_a: str, country_b: str) -> Any:
+    """Deterministically rewrite generic "Country A/B" prose to real names.
+
+    Belt-and-suspenders for the prompt instruction: the model is told to use real
+    names, but at temperature it occasionally slips. This guarantees no user-facing
+    "Country A"/"Country B" survives, regardless of model behaviour. Mutates and
+    returns ``item`` (a parsed insight dict); non-dicts pass through untouched.
+    """
+    if not isinstance(item, dict):
+        return item
+    for f in _RELABEL_FIELDS:
+        v = item.get(f)
+        if isinstance(v, str) and ("country a" in v.lower() or "country b" in v.lower()):
+            v = _COUNTRY_A_RE.sub(country_a, v)
+            item[f] = _COUNTRY_B_RE.sub(country_b, v)
+    return item
+
+
 # ---------------------------------------------------------------------------
 # The gate
 # ---------------------------------------------------------------------------
@@ -450,31 +486,43 @@ def build_prompt(
     b_block = "\n".join(f"  - {k}" for k in b_keys)
     said = _normalize_context(raw_context)
 
+    # Real destination names so the model writes prose about (e.g.) "France" and
+    # "Australia" instead of the generic "Country A" / "Country B". The fact_a/
+    # fact_b key namespaces stay generic (bundle_a.* / bundle_b.*) — that is the
+    # validator's contract — but every human-facing string uses the real name.
+    country_a = (fact_bundle.get("bundle_a") or {}).get("country", "Country A")
+    country_b = (fact_bundle.get("bundle_b") or {}).get("country", "Country B")
+
     coverages = _slot_coverages(slot_plan)
     slot_lines = []
     for i, (st, sides) in enumerate(zip(slot_plan, coverages)):
         if sides == ("a",):
-            cover = "use ONE country-A fact in fact_a; leave fact_b empty"
+            cover = f"use ONE {country_a} fact in fact_a; leave fact_b empty"
         elif sides == ("b",):
-            cover = "use ONE country-B fact in fact_b; leave fact_a empty"
+            cover = f"use ONE {country_b} fact in fact_b; leave fact_a empty"
         else:
-            cover = "use ONE country-A fact in fact_a AND ONE country-B fact in fact_b"
+            cover = f"use ONE {country_a} fact in fact_a AND ONE {country_b} fact in fact_b"
         slot_lines.append(f"  {i + 1}. {st} — {cover}")
     slots_block = "\n".join(slot_lines)
 
     return (
         "You are the what-if reasoning step in a post-grad job-offer comparator.\n"
+        f"The two destinations being compared are {country_a} (Country A) and "
+        f"{country_b} (Country B).\n"
         "Surface SEVEN concrete considerations, one per scenario slot below. Most "
-        "slots are COMPARATIVE: they weigh a country-A fact against a country-B fact "
-        "and name the real tradeoff (what you gain versus what you give up). "
+        f"slots are COMPARATIVE: they weigh a {country_a} fact against a {country_b} "
+        "fact and name the real tradeoff (what you gain versus what you give up). "
         "You never state which option to choose.\n\n"
         "Return a JSON array of exactly 7 objects in this exact slot order. The "
         "'scenario_type' of object N must match slot N, and each slot dictates which "
         "country/countries you must cite:\n"
         f"{slots_block}\n\n"
         "Rules (apply to every object):\n"
-        "  * fact_a (when used) MUST be copied verbatim from the Country-A key list below.\n"
-        "  * fact_b (when used) MUST be copied verbatim from the Country-B key list below.\n"
+        f"  * In every prose field (tradeoff, likely_outcome, consideration, "
+        f"next_action, confidence_basis) refer to each country by its real name — "
+        f"{country_a} or {country_b}. NEVER write \"Country A\" or \"Country B\".\n"
+        f"  * fact_a (when used) MUST be copied verbatim from the {country_a} key list below.\n"
+        f"  * fact_b (when used) MUST be copied verbatim from the {country_b} key list below.\n"
         "  * NEVER invent, guess, or modify a key, and NEVER assume the two countries "
         "expose the same keys — the lists below can differ (e.g. one country may have "
         "no visa_enrichment.* keys). If a key is not in the list, you may not cite it; "
@@ -487,8 +535,8 @@ def build_prompt(
         "including unfavorable odds — not a reassurance.\n"
         "  * consideration MUST be a non-obvious second-order implication, not generic advice.\n"
         "  * next_action MUST start with an action verb.\n\n"
-        f"Country-A fact keys:\n{a_block}\n\n"
-        f"Country-B fact keys:\n{b_block}\n\n"
+        f"{country_a} fact keys (bundle_a.*):\n{a_block}\n\n"
+        f"{country_b} fact keys (bundle_b.*):\n{b_block}\n\n"
         f"What the user said:\n{said}\n"
     )
 
@@ -622,6 +670,8 @@ def generate_insights(
     slot_plan = _slot_plan(bundle_a, bundle_b)
     coverages = _slot_coverages(slot_plan)
     fact_bundle = {"bundle_a": bundle_a.model_dump(), "bundle_b": bundle_b.model_dump()}
+    country_a = bundle_a.country or "Country A"
+    country_b = bundle_b.country or "Country B"
 
     try:
         from google import genai
@@ -658,6 +708,9 @@ def generate_insights(
             # The caller owns scenario_type — stamp it so the model can't drift it.
             if isinstance(item, dict):
                 item["scenario_type"] = scenario_type
+            # Guarantee no generic "Country A/B" reaches the user, even if the model
+            # ignored the prompt instruction for this slot.
+            item = _relabel_countries(item, country_a, country_b)
             result = validate_output(item, fact_bundle, user_context, coverages[i])
         else:
             result = ValidationResult(

@@ -3,6 +3,8 @@ import { ConfidenceBadge } from './Badges'
 
 interface InsightsPanelProps {
   insights: InsightOrFallback[]
+  countryA: string
+  countryB: string
 }
 
 const SCENARIO_LABEL: Record<ScenarioType, string> = {
@@ -16,7 +18,15 @@ const SCENARIO_LABEL: Record<ScenarioType, string> = {
   synthesis: 'Synthesis',
 }
 
-function InsightCard({ insight }: { insight: WhatIfInsight }) {
+function InsightCard({
+  insight,
+  countryA,
+  countryB,
+}: {
+  insight: WhatIfInsight
+  countryA: string
+  countryB: string
+}) {
   return (
     <li className="rounded-xl border border-line bg-surface-raised/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -44,12 +54,12 @@ function InsightCard({ insight }: { insight: WhatIfInsight }) {
       <div className="mt-3 flex flex-wrap gap-1.5">
         {insight.fact_a && (
           <span className="rounded-md bg-path-a/10 px-2 py-1 font-mono text-[10px] text-path-a">
-            A · {insight.fact_a}
+            {countryA} · {insight.fact_a}
           </span>
         )}
         {insight.fact_b && (
           <span className="rounded-md bg-path-b/10 px-2 py-1 font-mono text-[10px] text-path-b">
-            B · {insight.fact_b}
+            {countryB} · {insight.fact_b}
           </span>
         )}
         <span className="rounded-md bg-paper/60 px-2 py-1 font-mono text-[10px] text-ink-muted">
@@ -95,9 +105,21 @@ function WithheldCard({ fallback }: { fallback: SafeFallback }) {
   )
 }
 
-export default function InsightsPanel({ insights }: InsightsPanelProps) {
+export default function InsightsPanel({ insights, countryA, countryB }: InsightsPanelProps) {
   const passed = insights.filter((i): i is WhatIfInsight => i.type === 'insight').length
   const withheld = insights.length - passed
+
+  // Slots 0 and 1 are always the two single-country base cases (positional, so a withheld
+  // base slot still lands here). The remaining comparative insights stay a vertical column.
+  const baseItems = insights.slice(0, 2)
+  const restItems = insights.slice(2)
+
+  const renderItem = (item: InsightOrFallback, i: number) =>
+    item.type === 'insight' ? (
+      <InsightCard key={`insight-${i}`} insight={item} countryA={countryA} countryB={countryB} />
+    ) : (
+      <WithheldCard key={`fallback-${item.slot_index}-${i}`} fallback={item} />
+    )
 
   return (
     <section
@@ -111,19 +133,15 @@ export default function InsightsPanel({ insights }: InsightsPanelProps) {
         </span>
       </div>
       <p className="mt-1 text-sm text-ink-muted">
-        Each weighs a country-A fact against the country-B fact, names the tradeoff, and shows the
+        Each weighs a {countryA} fact against the {countryB} fact, names the tradeoff, and shows the
         likely outcome — grounded in cited facts and your stated priorities.
       </p>
 
-      <ul className="mt-4 space-y-3">
-        {insights.map((item, i) =>
-          item.type === 'insight' ? (
-            <InsightCard key={`insight-${i}`} insight={item} />
-          ) : (
-            <WithheldCard key={`fallback-${item.slot_index}-${i}`} fallback={item} />
-          ),
-        )}
-      </ul>
+      {/* The two base cases — one per country — sit side-by-side on wide screens, stacked on mobile. */}
+      <ul className="mt-4 grid gap-3 lg:grid-cols-2">{baseItems.map(renderItem)}</ul>
+
+      {/* The comparative insights stay a single vertical column. */}
+      <ul className="mt-3 space-y-3">{restItems.map((item, i) => renderItem(item, i + 2))}</ul>
     </section>
   )
 }

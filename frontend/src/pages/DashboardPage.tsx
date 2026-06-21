@@ -54,7 +54,7 @@ export default function DashboardPage() {
           {/* The AI reasoning leads — it's the reason the rest of the page matters. */}
           <section>
             <SectionEyebrow>What-if reasoning</SectionEyebrow>
-            <InsightsPanel insights={payload.insights} />
+            <InsightsPanel insights={payload.insights} countryA={countryA} countryB={countryB} />
           </section>
 
           <section>
