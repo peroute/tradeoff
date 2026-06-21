@@ -37,17 +37,25 @@ function normalizePair(
   if (a === null) return { a: 0, b: 1 }
   if (b === null) return { a: 1, b: 0 }
 
-  // Invert lower-is-better dimensions by comparing distance from the worse value.
-  // Shift to keep shares non-negative when a raw value is 0 or negative.
-  const va = higherIsBetter ? a : -a
-  const vb = higherIsBetter ? b : -b
-  const min = Math.min(va, vb)
-  const offset = min < 0 ? -min : 0
-  const sa = va + offset
-  const sb = vb + offset
-  const total = sa + sb
-  if (total === 0) return { a: 0.5, b: 0.5 } // both equal (incl. both zero) → tie
-  return { a: sa / total, b: sb / total }
+  if (higherIsBetter) {
+    // Share of total. Shift to keep shares non-negative when a raw value is < 0.
+    const min = Math.min(a, b)
+    const offset = min < 0 ? -min : 0
+    const sa = a + offset
+    const sb = b + offset
+    const total = sa + sb
+    if (total === 0) return { a: 0.5, b: 0.5 } // both equal (incl. both zero) → tie
+    return { a: sa / total, b: sb / total }
+  }
+
+  // Lower-is-better: inverse-weight so the smaller (better) value gets the larger
+  // share and the worse value stays a proportional, VISIBLE spoke rather than
+  // collapsing to the centre. (The old "shift by -min" approach zeroed out the
+  // worse value entirely — e.g. cost-of-living 100 vs 87 rendered the 100 at
+  // radius 0.) Inputs to these axes are non-negative (cost, years, risk).
+  const total = a + b
+  if (total === 0) return { a: 0.5, b: 0.5 } // both zero → tie
+  return { a: b / total, b: a / total }
 }
 
 
