@@ -26,7 +26,7 @@ from backend.pipeline.sample_payload import _bundle_a, _bundle_b
 # Granular risk types the two "contingency" slots may resolve to.
 _RISK_TYPES = {"lottery_risk", "extension_risk", "employer_switch", "partner_work", "pr_timeline"}
 
-# Fact bundle keyed bundle_a/bundle_b so fact_used matches the real convention
+# Fact bundle keyed bundle_a/bundle_b so fact_a/fact_b match the real convention
 # (mirrors backend/pipeline/sample_payload.py).
 FACT_BUNDLE = {
     "bundle_a": {
@@ -43,12 +43,21 @@ USER_CONTEXT = "I care about long-term residency stability for my family"
 
 
 def _valid_output(**overrides):
-    """A well-formed Stage 3 output that clears every validator rule."""
+    """A well-formed comparative Stage 3 output that clears every validator rule.
+
+    Cites a fact from BOTH bundles, so it passes the default ``("a", "b")``
+    coverage demand as well as the single-side base demands.
+    """
     out = {
         "scenario_type": "pr_timeline",
-        "fact_used": "bundle_a.visa_route.path_to_residency_years",
+        "fact_a": "bundle_a.visa_route.path_to_residency_years",
+        "fact_b": "bundle_b.visa_route.path_to_residency_years",
         "context_used": "long-term residency stability",
-        "connection": "residency timeline shapes long-term stability",
+        "tradeoff": (
+            "The longer residency timeline in country A trades years of stability "
+            "away against country B"
+        ),
+        "likely_outcome": "You most likely reach residency status later on the longer path",
         "consideration": (
             "The six-year residency path delays family settlement more than the "
             "nominal figure suggests"
@@ -81,6 +90,39 @@ def test_passing_output_constructs_a_whatifinsight():
     insight = WhatIfInsight(**result.output)
     assert insight.scenario_type == "pr_timeline"
     assert insight.type == "insight"
+
+
+def test_base_slot_single_country_passes():
+    """A base slot only needs its one side; the empty side normalizes to None."""
+    out = _valid_output(scenario_type="base", fact_b="")
+    result = validate_output(out, FACT_BUNDLE, USER_CONTEXT, required_sides=("a",))
+    assert result.passed, result.failures
+    assert result.output["fact_a"] == "bundle_a.visa_route.path_to_residency_years"
+    assert result.output["fact_b"] is None
+
+
+def test_comparative_slot_requires_both_facts():
+    """A comparative slot missing fact_b is withheld — coverage is enforced."""
+    out = _valid_output(fact_b="")
+    result = validate_output(out, FACT_BUNDLE, USER_CONTEXT, required_sides=("a", "b"))
+    assert not result.passed
+    assert any("fact_b is required" in f for f in result.failures)
+
+
+def test_fact_a_wrong_namespace_is_rejected():
+    """A fact_a that points into bundle_b is not a valid country-A fact."""
+    out = _valid_output(fact_a="bundle_b.visa_route.path_to_residency_years")
+    result = validate_output(out, FACT_BUNDLE, USER_CONTEXT, required_sides=("a", "b"))
+    assert not result.passed
+    assert any("bundle_a.* key" in f for f in result.failures)
+
+
+def test_tradeoff_must_share_vocab_with_both_facts():
+    """tradeoff that ignores the facts' vocabulary fails the grounding rule."""
+    out = _valid_output(tradeoff="generic statement about your situation overall here")
+    result = validate_output(out, FACT_BUNDLE, USER_CONTEXT, required_sides=("a", "b"))
+    assert not result.passed
+    assert any("tradeoff shares no vocabulary" in f for f in result.failures)
 
 
 def test_validate_output_rejects_invalid_scenario_type():
@@ -221,22 +263,22 @@ def test_to_insight_maps_passed_to_whatifinsight():
 
 
 def test_to_insight_maps_failure_to_safefallback():
-    result = ValidationResult(False, ["fact_used bad", "connection thin"], {})
+    result = ValidationResult(False, ["fact_a bad", "tradeoff thin"], {})
     fallback = to_insight(result, 3)
     assert isinstance(fallback, SafeFallback)
     assert fallback.type == "safe_fallback"
     assert fallback.slot_index == 3
-    assert "fact_used bad" in fallback.reason
+    assert "fact_a bad" in fallback.reason
 
 
 def test_generate_insights_returns_seven_typed_union(fake_genai):
     """Single Gemini call end-to-end: synthesis slot fails validation → SafeFallback."""
     plan = _slot_plan(BUNDLE_A, BUNDLE_B)
-    # Slot 6 (synthesis) has a fact_used not in the real bundle → validation fails.
+    # Slot 6 (synthesis) has a fact_a not in the real bundle → validation fails.
     items = []
     for i, _ in enumerate(plan):
         if i == 6:
-            items.append(_valid_output(fact_used="nonexistent.key.not.in.bundle"))
+            items.append(_valid_output(fact_a="bundle_a.nonexistent.key"))
         else:
             items.append(_valid_output())
     fake_genai(items)

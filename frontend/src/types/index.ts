@@ -57,12 +57,18 @@ export interface ImmigrationOutlook {
 }
 
 // --- Gemini Stage 3 output (discriminated on `type`) ---
+// Tradeoff-native: comparative slots pin a country-A fact (fact_a, a bundle_a.*
+// key) against the country-B fact (fact_b, a bundle_b.* key); the two base slots
+// are single-country (one side null). `tradeoff` names the gain-vs-sacrifice and
+// `likely_outcome` states the honest "what happens if" result.
 export interface WhatIfInsight {
   type: 'insight'
   scenario_type: ScenarioType
-  fact_used: string
+  fact_a: string | null
+  fact_b: string | null
   context_used: string
-  connection: string
+  tradeoff: string
+  likely_outcome: string
   consideration: string
   confidence: ConfidenceLevel
   confidence_basis: string
