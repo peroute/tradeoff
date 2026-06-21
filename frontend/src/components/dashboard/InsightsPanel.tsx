@@ -62,9 +62,6 @@ function InsightCard({
             {countryB} · {insight.fact_b}
           </span>
         )}
-        <span className="rounded-md bg-paper/60 px-2 py-1 font-mono text-[10px] text-ink-muted">
-          you said · “{insight.context_used}”
-        </span>
       </div>
 
       <div className="mt-3 flex items-start gap-2 rounded-lg border border-path-a/20 bg-path-a/5 px-3 py-2">
