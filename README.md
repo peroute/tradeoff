@@ -22,14 +22,14 @@ The hard part of this problem is not fetching data; it's reasoning responsibly o
 
 - **A clean split between "soft" and "hard" knowledge.** The LLM is *only* allowed to reason about and retrieve soft information — visa-route resolution, policy trends, career context. Hard facts (salary floors, PR timelines, lottery odds) are **never** looked up by the model; they come from curated, cited, dated sources. The model is structurally prevented from being the source of a number that matters.
 - **Grounded retrieval, then structured extraction — two sub-calls, for a reason.** Stage 2b runs Gemini with **Google Search grounding restricted to an all-listed registry of official government URLs**, then a second no-search call enforces a strict `response_schema`. We split these deliberately because Search grounding and structured JSON output can't be reliably combined in one SDK call — a justification-over-buzzwords choice, exactly what the brief asks judges to reward.
-- **Second-order reasoning, not summary.** Stage 3 generates 7 typed "what-if" insights per comparison (`base`, `contingency`, `priority_match`, `synthesis`). Each insight must explicitly bind a **fact** from the data bundle to a **verbatim phrase from the user's own stated priorities**, and the `consideration` field is required to state something *not obvious from the fact alone*.
-- **Every model output is validated before a human ever sees it.** A deterministic `validate_output()` enforces 6 rules — the cited fact must exist in the bundle, the user-context quote must be real, the connection must share vocabulary with both, the conclusion can't be boilerplate, the action must be imperative, the type must be in the allowed set. **Any failure routes to a visible `SAFE_FALLBACK` — unvalidated model output is never displayed.** The validator and the prompt builder share one source of truth (`_flatten_keys()` in `reasoning_step.py`) so they can't drift.
+- **Second-order reasoning, not summary.** Stage 3 generates 7 typed "what-if" insights per comparison (`base`, `contingency`, `priority_match`, `synthesis`). The insights are **tradeoff-native**: each comparative slot pins a **real fact from Country A** against a **real fact from Country B** and names what you gain versus give up, anchored to a **verbatim phrase from the user's own stated priorities**. The `consideration` field is required to state something *not obvious from the fact alone*, and `likely_outcome` must give the honest result — including unfavorable odds — never a reassurance.
+- **Every model output is validated before a human ever sees it.** A deterministic `validate_output()` enforces 7 rules — each required side's cited fact must exist in the correct bundle namespace (`fact_a` under `bundle_a.*`, `fact_b` under `bundle_b.*`), the user-context quote must be real, the `tradeoff` must share vocabulary with each cited fact, the conclusion can't be boilerplate, the action must be imperative, and the scenario type must be in the allowed set. **Any failure routes to a visible per-slot `SAFE_FALLBACK` — unvalidated model output is never displayed.** The validator and the prompt builder share one source of truth (`_flatten_keys()` in `reasoning_step.py`) so they can't drift.
 
 ### Responsible AI (10%) — enforced in code, not just claimed
 
 - **The AI never recommends a country.** This is the human-in-the-loop boundary, and it's enforced at the output layer, not just promised in prose. `HumanBoundaryBanner` is pinned and always visible.
 - **Withheld reasoning is shown, not hidden.** When an insight fails validation, the user is told an analysis point was withheld because it couldn't be verified — silence would be the irresponsible choice.
-- **Radical provenance.** Every curated fact carries a real `source_url` and `last_verified` date. Every visa route shows `routing_confidence`. Every wage/cost figure discloses its **resolution caveat** (e.g. US metro-level vs. national average) so users never over-trust a number that's coarser than it looks.
+- **Radical provenance.** Every curated fact carries a real `source_url` and `last_verified` date. Every visa route shows `routing_confidence`. Every wage/cost figure discloses its **resolution caveat** (e.g. US occupation-level BLS wage vs. another country's national-average OECD wage) so users never over-trust a number that's coarser, or measured differently, than it looks.
 
 ### Solution design (25%)
 
@@ -46,7 +46,7 @@ The differentiator is the immigration modeling most competing teams won't attemp
 ```
 Intake (deterministic — parse + validate profile)
    │
-   ├─▶ AI calls #1a/#1b  Route + Outlook research (×2, once per country)
+   ├─▶ AI calls #1a/#1b  Route + Outlook research (×2, once per country — run concurrently)
    │                     Gemini + Google Search grounding, allow-listed gov URLs, raw text
    ├─▶ AI call #2        Route + Outlook structure
    │                     Gemini, no search, response_schema=RouteAndOutlook, temperature=0
@@ -56,7 +56,7 @@ Intake (deterministic — parse + validate profile)
    │
    ├─▶ AI call #3        What-if reasoning — one call, 7 insights returned as JSON array
    │                     Gemini structured output · validator runs per item
-   ├─▶ Validate (deterministic, per item)  6 rules → per-slot SAFE_FALLBACK on any failure
+   ├─▶ Validate (deterministic, per item)  7 rules → per-slot SAFE_FALLBACK on any failure
    │
    ├─▶ Sacrifice-map diff (deterministic)  5-dimension cross-country comparison
    │
@@ -72,7 +72,7 @@ Intake (deterministic — parse + validate profile)
 
 **Supported destinations:** US, UK, Canada, Australia, Germany, France — chosen by real international-student enrollment volume.
 
-**Tech stack:** Python 3.11+, FastAPI, Pydantic v2, google-generativeai · React 18, TypeScript, Vite, Tailwind CSS.
+**Tech stack:** Python 3.11+, FastAPI, Pydantic v2, google-genai (Gemini SDK) · React 18, TypeScript, Vite, Tailwind CSS.
 
 ---
 
@@ -205,7 +205,7 @@ Example `POST /api/compare` body:
 | Source | Mechanism | Covers |
 |---|---|---|
 | OECD Data API (`sdmx.oecd.org`) | live, no key | national wages + PPP conversion, all 6 countries |
-| BLS Public Data API (`api.bls.gov`) | live | US wages by occupation (SOC); metro-area when a US city is given |
+| BLS Public Data API (`api.bls.gov`) | live | US wages by occupation (SOC from `field_soc_map.json`); national average when no SOC match |
 | World Bank Open Data API (`api.worldbank.org`) | live, no key | national price-level index (US = 100) — **primary CoL source** |
 | WhereNext (`getwherenext.com`, CC BY 4.0) | live, no key | national cost index (US = 100) — secondary CoL source when World Bank unavailable |
 | `data_sources/numbeo.py` (curated mock) | curated, offline fallback | national CoL indices; last resort when both live CoL sources fail; flagged on dashboard |

@@ -79,6 +79,7 @@ import datetime
 import json
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -448,12 +449,27 @@ def fetch(profile: ParsedProfile, trace: dict | None = None) -> RouteAndOutlook:
         trace["countries"] = []
 
     # ── Call #1: one Gemini + Google Search grounding call per country ───────
+    # The two per-country research calls are independent (different country, its
+    # own search budget) and I/O-bound, so we issue them concurrently in threads —
+    # the same ThreadPoolExecutor pattern Stage 2a uses in the orchestrator. This
+    # collapses two sequential network round-trips into roughly one.
+    #
+    # Ordering is kept deterministic: we submit in (country_a, country_b) order and
+    # then CONSUME the results in that same fixed order, so the concatenated
+    # research text, aggregated grounded domains, search queries, and trace are
+    # identical to the old sequential version regardless of which thread finishes
+    # first. The `with` block's shutdown(wait=True) guarantees both calls have
+    # completed before we read any .result().
+    countries = (country_a, country_b)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = {c: pool.submit(_research_country, client, profile, c) for c in countries}
+
     raw_sections: list[str] = []
     grounded_domains: set[str] = set()
     search_queries: list[str] = []
-    for country in (country_a, country_b):
+    for country in countries:
         try:
-            resp = _research_country(client, profile, country)
+            resp = futures[country].result()
         except Exception as exc:
             raise RuntimeError(f"Stage 2b Call #1 (search) failed for {country}: {exc}") from exc
         text = resp.text or ""
