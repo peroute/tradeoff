@@ -34,6 +34,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable, get_args
 
+from backend.config import settings
 from backend.models.ai_models import SafeFallback, ScenarioType, WhatIfInsight
 from backend.models.output_models import CountryBundle
 
@@ -507,7 +508,7 @@ def generate_insights(
         from google.genai import types
 
         if client is None:
-            client = genai.Client()
+            client = genai.Client(api_key=settings.gemini_api_key)
 
         response = client.models.generate_content(
             model=model_id,
