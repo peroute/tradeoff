@@ -18,7 +18,15 @@ const SCENARIO_LABEL: Record<ScenarioType, string> = {
   synthesis: 'Synthesis',
 }
 
-function InsightCard({ insight }: { insight: WhatIfInsight }) {
+function InsightCard({
+  insight,
+  countryA,
+  countryB,
+}: {
+  insight: WhatIfInsight
+  countryA: string
+  countryB: string
+}) {
   return (
     <li className="rounded-xl border border-line bg-surface-raised/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -104,7 +112,7 @@ export default function InsightsPanel({ insights, countryA, countryB }: Insights
 
   const renderItem = (item: InsightOrFallback, i: number) =>
     item.type === 'insight' ? (
-      <InsightCard key={`insight-${i}`} insight={item} />
+      <InsightCard key={`insight-${i}`} insight={item} countryA={countryA} countryB={countryB} />
     ) : (
       <WithheldCard key={`fallback-${item.slot_index}-${i}`} fallback={item} />
     )
