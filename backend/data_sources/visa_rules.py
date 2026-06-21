@@ -99,9 +99,29 @@ def _rule_to_fact(slug: str, rule: dict) -> VisaFact:
     return fact
 
 
+# Trailing nouns the AI may append to a visa name that curated keys omit
+# (curated keys are suffix-less, e.g. "us_h1b", "uk_graduate"). Stripping one of
+# these lets an AI-normalized "uk_graduate_visa" still resolve to "uk_graduate".
+_SLUG_SUFFIXES = ("_visa", "_route", "_permit", "_programme", "_program")
+
+
 def get_visa_rule(slug: str) -> VisaFact | None:
-    """Curated VisaFact for `slug` (e.g. "us_h1b"), or None if not modeled."""
+    """Curated VisaFact for `slug` (e.g. "us_h1b"), or None if not modeled.
+
+    Tolerant of AI slug wording: if the exact slug misses, one common trailing
+    noun (`_visa`, `_route`, …) is stripped and the lookup retried once, so
+    "uk_graduate_visa" resolves to the curated "uk_graduate". No fuzzy/substring
+    matching — that would risk false positives across distinct visas.
+    """
     rule = _VISA_RULES.get(slug)
+    if rule is None:
+        for suffix in _SLUG_SUFFIXES:
+            if slug.endswith(suffix):
+                stripped = slug[: -len(suffix)]
+                rule = _VISA_RULES.get(stripped)
+                if rule is not None:
+                    slug = stripped
+                break
     if rule is None:
         return None
     return _rule_to_fact(slug, rule)
