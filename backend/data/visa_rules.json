@@ -37,6 +37,23 @@
     "source_url": "https://www.gov.uk/skilled-worker-visa",
     "last_verified": "2026-05-01"
   },
+  "uk_graduate": {
+    "country": "UK",
+    "visa_name": "Graduate visa",
+    "min_salary": null,
+    "currency": "GBP",
+    "employer_sponsorship_required": false,
+    "can_switch_employer": true,
+    "switch_conditions": "No sponsorship required; may work for almost any employer in any job, be self-employed, or change jobs freely. Non-extendable; switch to a sponsored route (e.g. Skilled Worker) before it expires.",
+    "path_to_pr_years": null,
+    "lottery_required": false,
+    "lottery_annual_rate": null,
+    "lottery_history": [],
+    "partner_work_rights": "full",
+    "partner_work_notes": "Partner/children already in the UK as your dependants can stay and work; new dependants generally cannot be added on this route.",
+    "source_url": "https://www.gov.uk/graduate-visa",
+    "last_verified": "2026-06-21"
+  },
   "ca_express_entry": {
     "country": "Canada",
     "visa_name": "Express Entry (Federal Skilled Worker)",

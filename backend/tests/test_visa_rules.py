@@ -31,8 +31,35 @@ def test_get_visa_rule_modeled():
     assert f.source_url and f.last_verified
 
 
+def test_get_visa_rule_uk_graduate_modeled():
+    f = visa_rules.get_visa_rule("uk_graduate")
+    assert isinstance(f, VisaFact)
+    assert f.is_modeled is True
+    assert f.country == "UK"
+    assert f.visa_name == "Graduate visa"
+    assert f.min_salary is None  # no salary floor
+    assert f.employer_sponsorship_required is False
+    assert f.can_switch_employer is True
+    assert f.lottery_required is False
+    assert f.partner_work_rights == "full"
+    assert f.source_url and f.last_verified
+
+
+def test_get_visa_rule_strips_suffix_variant():
+    # AI-normalized "uk_graduate_visa" must resolve to curated "uk_graduate".
+    f = visa_rules.get_visa_rule("uk_graduate_visa")
+    assert isinstance(f, VisaFact)
+    assert f.visa_slug == "uk_graduate"
+    assert f.visa_name == "Graduate visa"
+
+
 def test_get_visa_rule_unknown_returns_none():
     assert visa_rules.get_visa_rule("does_not_exist") is None
+
+
+def test_get_visa_rule_suffix_strip_does_not_invent_match():
+    # Stripping a suffix off an unknown slug must still miss, not false-match.
+    assert visa_rules.get_visa_rule("japan_engineer_visa") is None
 
 
 def test_compute_lottery_cumulative_h1b():

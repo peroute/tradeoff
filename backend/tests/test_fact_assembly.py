@@ -188,6 +188,17 @@ def test_visa_enrichment_populated_for_modeled_slug(monkeypatch):
     assert bundle.visa_enrichment.curated_source_url
 
 
+def test_visa_enrichment_populated_for_graduate_slug_variant(monkeypatch):
+    # AI-normalized "uk_graduate_visa" must still resolve curated enrichment.
+    monkeypatch.setattr(oecd, "fetch_oecd_wages", lambda c: _oecd_wage(country="UK", currency="GBP"))
+
+    bundle = fact_assembly.assemble(_profile(), "UK", _stub_route("uk_graduate_visa"))
+    assert bundle.visa_enrichment is not None
+    assert bundle.visa_enrichment.min_salary is None        # Graduate visa has no salary floor
+    assert bundle.visa_enrichment.can_switch_employer is True
+    assert bundle.visa_enrichment.curated_source_url
+
+
 def test_visa_enrichment_none_for_unmodeled_slug(monkeypatch):
     monkeypatch.setattr(oecd, "fetch_oecd_wages", lambda c: _oecd_wage(country="Germany"))
 

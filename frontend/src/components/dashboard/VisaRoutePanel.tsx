@@ -71,6 +71,11 @@ export default function VisaRoutePanel({ bundle, accent }: VisaRoutePanelProps) 
         <Row label="Path to residency">
           {route.path_to_residency_years != null ? `${route.path_to_residency_years} yrs` : '—'}
         </Row>
+        {!enr && (
+          <p className="border-t border-line/60 py-2 text-[12px] italic text-ink-muted">
+            Detailed rules not in curated dataset for this visa.
+          </p>
+        )}
         {enr && (
           <>
             {enr.lottery_required != null && (
