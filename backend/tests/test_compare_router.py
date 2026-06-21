@@ -67,7 +67,7 @@ def test_countries_echoed_from_request():
     payload = build_sample_payload(_request(country_a="Canada", country_b="France"))
     assert payload.bundle_a.country == "Canada"
     assert payload.bundle_b.country == "France"
-    assert payload.sacrifice_map.net_takehome_ppp.dimension == "net_takehome_ppp"
+    assert payload.sacrifice_map.net_takehome_usd.dimension == "net_takehome_usd"
 
 
 def test_insight_structure_invariants():
@@ -79,11 +79,12 @@ def test_insight_structure_invariants():
     assert len(insights) == 6
 
 
-def test_sacrifice_map_has_all_five_dimensions():
+def test_sacrifice_map_has_all_six_dimensions():
     payload = build_sample_payload(_request())
     sm = payload.sacrifice_map
     for dim in (
-        sm.net_takehome_ppp,
+        sm.net_takehome_usd,
+        sm.col_relative,
         sm.visa_stability_score,
         sm.pr_timeline_years,
         sm.lottery_risk,
@@ -105,11 +106,19 @@ def test_payload_self_labeled_as_stub():
     assert payload.pipeline_meta.fact_sources["note"] == STUB_NOTE
 
 
-def test_net_takehome_ppp_is_internally_consistent():
+def test_net_annual_usd_is_internally_consistent():
     payload = build_sample_payload(_request())
     for bundle in (payload.bundle_a, payload.bundle_b):
-        expected = bundle.tax.net_annual_local / (bundle.col.col_index / 100)
-        assert bundle.net_takehome_ppp == pytest.approx(expected)
+        expected = round(bundle.tax.net_annual_local / bundle.col.exchange_rate_to_usd, 2)
+        assert bundle.net_annual_usd == pytest.approx(expected)
+
+
+def test_col_relative_rebases_to_country_a():
+    payload = build_sample_payload(_request())
+    cr = payload.sacrifice_map.col_relative
+    assert cr.country_a_value == 100.0
+    expected_b = round(payload.bundle_b.col.col_index / payload.bundle_a.col.col_index * 100, 1)
+    assert cr.country_b_value == pytest.approx(expected_b)
 
 
 def test_unsupported_country_rejected_422():

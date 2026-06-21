@@ -136,10 +136,25 @@ def compute(
     deterministic and traceable to cited sources except trend_direction
     (Stage 2b AI call), which is labelled in _visa_stability_score.
     """
-    # ── 1. net_takehome_ppp ─────────────────────────────────────────────────
-    net_a = bundle_a.net_takehome_ppp
-    net_b = bundle_b.net_takehome_ppp
+    # ── 1. net_takehome_usd ─────────────────────────────────────────────────
+    net_a = bundle_a.net_annual_usd
+    net_b = bundle_b.net_annual_usd
     net_delta = round(net_a - net_b, 2) if net_a is not None and net_b is not None else None
+
+    # ── 1b. col_relative (Country A = 100 baseline) ─────────────────────────
+    col_a = bundle_a.col.col_index
+    col_b = bundle_b.col.col_index
+    if col_a and col_b:
+        col_rel_a: float | None = 100.0
+        col_rel_b: float | None = round(col_b / col_a * 100, 1)
+        col_rel_delta: float | None = round(col_rel_b - 100.0, 1)
+        # Lower cost of living is better; A is the fixed 100 baseline.
+        col_winner = _winner_numeric(col_rel_a, col_rel_b, higher_is_better=False)
+    else:
+        col_rel_a = 100.0 if col_a else None
+        col_rel_b = None
+        col_rel_delta = None
+        col_winner = None
 
     # ── 2. visa_stability_score ──────────────────────────────────────────────
     score_a = _visa_stability_score(bundle_a, route_and_outlook.country_a_outlook)
@@ -166,13 +181,21 @@ def compute(
         lottery_winner = _winner_numeric(risk_a, risk_b, higher_is_better=False)
 
     return SacrificeMap(
-        net_takehome_ppp=DimensionDiff(
-            dimension="net_takehome_ppp",
+        net_takehome_usd=DimensionDiff(
+            dimension="net_takehome_usd",
             country_a_value=round(net_a, 2) if net_a is not None else None,
             country_b_value=round(net_b, 2) if net_b is not None else None,
             delta=net_delta,
             winner=_winner_numeric(net_a, net_b, higher_is_better=True),
-            note="Cost-of-living-adjusted annual take-home (NYC = 100 baseline).",
+            note="Annual take-home converted to USD (nominal, market FX).",
+        ),
+        col_relative=DimensionDiff(
+            dimension="col_relative",
+            country_a_value=col_rel_a,
+            country_b_value=col_rel_b,
+            delta=col_rel_delta,
+            winner=col_winner,
+            note="Cost of living relative to Country A (A = 100; lower is cheaper).",
         ),
         visa_stability_score=DimensionDiff(
             dimension="visa_stability_score",

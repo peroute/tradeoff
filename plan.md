@@ -154,11 +154,12 @@ Any failure → `SafeFallback(type="safe_fallback", reason="rule_N_failed", slot
 
 ---
 
-## Sacrifice Diff — 5 Dimensions
+## Sacrifice Diff — 6 Dimensions
 
 | Dimension | Source |
 |---|---|
-| `net_takehome_ppp` | Gross wage → tax brackets → ÷ CoL index (city-level if available, OECD PPP otherwise) |
+| `net_takehome_usd` | Gross wage → tax brackets → net, converted to nominal USD via World Bank market FX (PA.NUS.FCRF) |
+| `col_relative` | Each country's US=100 CoL index rebased to Country A = 100 (B = col_b/col_a×100; lower is cheaper) |
 | `visa_stability_score` | Formula: base − trend_penalty − lottery_penalty (see below) |
 | `pr_timeline_years` | `visa_rules.json` curated or AI-extracted |
 | `lottery_risk` | `1 − lottery_cumulative_3yr`; null if no lottery |

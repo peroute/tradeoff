@@ -35,6 +35,17 @@ from backend.models.output_models import (
 
 _DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
+# Fallback exchange rate (LCU per USD) keyed by currency, for net-USD conversion
+# when the chosen cost-of-living source didn't carry a live FX read (WhereNext /
+# Numbeo). Mirrors worldbank._FALLBACK_XR; ~2024 World Bank PA.NUS.FCRF averages.
+_FALLBACK_XR: dict[str, float] = {
+    "USD": 1.0,
+    "GBP": 0.7824,
+    "CAD": 1.3697,
+    "AUD": 1.5163,
+    "EUR": 0.9239,
+}
+
 
 def _load_soc_map() -> dict:
     try:
@@ -127,6 +138,7 @@ def _col_data_from(
     return ColData(
         city=None,  # national figure, not city-specific
         col_index=cd.cost_of_living_index,
+        exchange_rate_to_usd=cd.exchange_rate_to_usd,
         monthly_cost_usd=cd.monthly_cost_usd,
         source=source or cd.source,
         col_source="national_ppp",
@@ -171,11 +183,19 @@ def _to_visa_enrichment(vf: VisaFact | None) -> VisaEnrichment | None:
     )
 
 
-def _net_takehome_ppp(net_annual_local: float, col_index: float | None) -> float | None:
-    """Net take-home adjusted for cost of living (NYC=100 baseline)."""
-    if col_index is None:
+def _net_annual_usd(net_annual_local: float, currency: str, col: ColData) -> float | None:
+    """Net take-home converted to nominal USD (market FX).
+
+    Prefers the live World Bank exchange rate carried on `col`; falls back to a
+    curated per-currency rate when the cost-of-living source didn't supply FX
+    (WhereNext / Numbeo). Returns None only when no rate is resolvable.
+    """
+    xr = col.exchange_rate_to_usd
+    if xr is None:
+        xr = _FALLBACK_XR.get(currency)
+    if not xr:  # None or 0 -> can't convert
         return None
-    return net_annual_local / (col_index / 100)
+    return round(net_annual_local / xr, 2)
 
 
 def assemble(
@@ -198,7 +218,7 @@ def assemble(
         wage=wage,
         col=col,
         tax=tax_data,
-        net_takehome_ppp=_net_takehome_ppp(tax_data.net_annual_local, col.col_index),
+        net_annual_usd=_net_annual_usd(tax_data.net_annual_local, wage.currency, col),
         visa_route=visa_route,
         visa_enrichment=enrichment,
     )

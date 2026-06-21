@@ -45,6 +45,7 @@ def test_fetch_live_index_uk(load_fixture, monkeypatch, fake_response):
     assert cd.is_fallback is False
     assert cd.currency == "GBP"
     assert cd.cost_of_living_index == pytest.approx(87.3, abs=0.1)  # 0.6827/0.7824*100
+    assert cd.exchange_rate_to_usd == pytest.approx(0.7824, abs=0.001)  # live FX surfaced
 
 
 def test_us_baseline_is_100(load_fixture, monkeypatch, fake_response):
@@ -67,6 +68,7 @@ def test_fallback_on_http_error(monkeypatch):
     assert cd.source == "World Bank (fallback)"
     assert cd.currency == "EUR"
     assert cd.cost_of_living_index == worldbank._FALLBACK_INDEX["Germany"]
+    assert cd.exchange_rate_to_usd == worldbank._FALLBACK_XR["Germany"]
 
 
 def test_fallback_on_unparseable_payload(monkeypatch, fake_response):

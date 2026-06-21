@@ -47,6 +47,7 @@ class CostData(BaseModel):
     country: str
     currency: str
     cost_of_living_index: float               # Numbeo cpi_index (excludes rent)
+    exchange_rate_to_usd: Optional[float] = None  # LCU per USD (World Bank PA.NUS.FCRF); None for sources that don't supply FX
     monthly_cost_usd: Optional[float] = None  # estimated monthly living cost USD (WhereNext); None for index-only sources
     rent_index: Optional[float] = None
     cost_of_living_plus_rent_index: Optional[float] = None

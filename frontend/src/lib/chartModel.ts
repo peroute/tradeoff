@@ -8,7 +8,8 @@
 //      is categorical (partner work rights), so they must be transformed.
 //   2. Currency safety. wage.gross_annual_local is in each country's *local*
 //      currency, so A's and B's gross figures are NOT comparable on one axis.
-//      The only cross-country-comparable money figure is net_takehome_ppp.
+//      The cross-country-comparable money figure is net_annual_usd (nominal,
+//      converted to a common USD unit); cost of living lives on its own axis.
 //
 // All transforms are deterministic and unit-tested (chartModel.test.ts).
 
@@ -47,6 +48,22 @@ function normalizePair(
   const total = sa + sb
   if (total === 0) return { a: 0.5, b: 0.5 } // both equal (incl. both zero) → tie
   return { a: sa / total, b: sb / total }
+}
+
+/**
+ * Magnitude normalization for axes read as raw size rather than "who wins"
+ * (e.g. cost of living). The larger value maps to 1 (the rim), the other to its
+ * proportional share of it, so the higher figure is always the maximal spoke and
+ * the smaller one is shown to scale. Missing inputs yield null (skip the spoke).
+ */
+function normalizeMagnitude(
+  a: number | null,
+  b: number | null,
+): { a: number | null; b: number | null } {
+  if (a === null && b === null) return { a: null, b: null }
+  const max = Math.max(a ?? 0, b ?? 0)
+  if (max <= 0) return { a: a === null ? null : 0.5, b: b === null ? null : 0.5 }
+  return { a: a === null ? null : a / max, b: b === null ? null : b / max }
 }
 
 const PARTNER_RANK: Record<PartnerOpportunity, number> = {
@@ -89,10 +106,10 @@ export interface IncomeBreakdown {
   colIndex: number | null
 }
 
-/** Cross-country comparable take-home (PPP-normalized). Safe to chart together. */
+/** Cross-country comparable take-home in nominal USD. Safe to chart together. */
 export interface NetComparisonPoint {
   country: string
-  netTakehomePpp: number | null
+  netUsd: number | null
 }
 
 export interface ChartModel {
@@ -100,7 +117,7 @@ export interface ChartModel {
   comparison: ComparisonPoint[]
   /** Side-by-side income waterfall inputs, each in its own currency. */
   incomeBreakdown: { a: IncomeBreakdown; b: IncomeBreakdown }
-  /** The ONLY money figure safe to compare across countries on one axis. */
+  /** Net take-home in a common USD unit — safe to compare across countries. */
   netComparison: NetComparisonPoint[]
   /** Visa stability gauges, already 0–1 from the backend. */
   visaStability: { a: number | null; b: number | null }
@@ -112,8 +129,11 @@ const DIMENSIONS: Array<{
   label: string
   higherIsBetter: boolean
   categorical?: boolean
+  // magnitude axes show raw size (larger = rim), not a higher-is-better share.
+  magnitude?: boolean
 }> = [
-  { key: 'net_takehome_ppp', label: 'Take-home (PPP)', higherIsBetter: true },
+  { key: 'net_takehome_usd', label: 'Take-home (USD)', higherIsBetter: true },
+  { key: 'col_relative', label: 'Cost of living', higherIsBetter: true, magnitude: true },
   { key: 'visa_stability_score', label: 'Visa stability', higherIsBetter: true },
   { key: 'pr_timeline_years', label: 'PR speed', higherIsBetter: false },
   { key: 'lottery_risk', label: 'Lottery safety', higherIsBetter: false },
@@ -138,7 +158,7 @@ export function toChartModel(payload: DashboardPayload): ChartModel {
   const { sacrifice_map: sm, bundle_a, bundle_b } = payload
 
   const comparison: ComparisonPoint[] = DIMENSIONS.map(
-    ({ key, label, higherIsBetter, categorical }) => {
+    ({ key, label, higherIsBetter, categorical, magnitude }) => {
       const diff = sm[key]
       const aVal = categorical
         ? partnerRank(diff.country_a_value)
@@ -146,7 +166,9 @@ export function toChartModel(payload: DashboardPayload): ChartModel {
       const bVal = categorical
         ? partnerRank(diff.country_b_value)
         : asNumber(diff.country_b_value)
-      const norm = normalizePair(aVal, bVal, higherIsBetter)
+      const norm = magnitude
+        ? normalizeMagnitude(aVal, bVal)
+        : normalizePair(aVal, bVal, higherIsBetter)
       return {
         key,
         label,
@@ -164,8 +186,8 @@ export function toChartModel(payload: DashboardPayload): ChartModel {
     comparison,
     incomeBreakdown: { a: buildIncome(bundle_a), b: buildIncome(bundle_b) },
     netComparison: [
-      { country: bundle_a.country, netTakehomePpp: bundle_a.net_takehome_ppp },
-      { country: bundle_b.country, netTakehomePpp: bundle_b.net_takehome_ppp },
+      { country: bundle_a.country, netUsd: bundle_a.net_annual_usd },
+      { country: bundle_b.country, netUsd: bundle_b.net_annual_usd },
     ],
     visaStability: {
       a: asNumber(sm.visa_stability_score.country_a_value),

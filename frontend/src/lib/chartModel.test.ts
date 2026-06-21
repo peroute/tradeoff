@@ -24,12 +24,12 @@ function payload(overrides: Partial<DashboardPayload> = {}): DashboardPayload {
     source_url: 'u',
     source_retrieved: 'd',
   }
-  const bundle = (country: string, gross: number, net: number, ppp: number) => ({
+  const bundle = (country: string, gross: number, net: number, usd: number) => ({
     country,
     wage: { gross_annual_local: gross, currency: 'USD', source: 'BLS' as const, soc_code: null, precision_note: '' },
-    col: { city: null, col_index: 100, monthly_cost_usd: null, source: 'WB', col_source: 'national_ppp' as const, is_fallback: false, precision_note: null },
+    col: { city: null, col_index: 100, exchange_rate_to_usd: 1, monthly_cost_usd: null, source: 'WB', col_source: 'national_ppp' as const, is_fallback: false, precision_note: null },
     tax: { effective_rate: (gross - net) / gross, net_annual_local: net, notes: null },
-    net_takehome_ppp: ppp,
+    net_annual_usd: usd,
     visa_route: route,
     visa_enrichment: null,
   })
@@ -40,7 +40,8 @@ function payload(overrides: Partial<DashboardPayload> = {}): DashboardPayload {
     outlook_b: {} as never,
     insights: [],
     sacrifice_map: {
-      net_takehome_ppp: diff('net_takehome_ppp', 70000, 50000, 'a'),
+      net_takehome_usd: diff('net_takehome_usd', 70000, 50000, 'a'),
+      col_relative: diff('col_relative', 100, 80, 'b'),
       visa_stability_score: diff('visa_stability_score', 0.8, 0.4, 'a'),
       pr_timeline_years: diff('pr_timeline_years', 6, 3, 'b'),
       lottery_risk: diff('lottery_risk', 0.5, 0.0, 'b'),
@@ -54,10 +55,29 @@ function payload(overrides: Partial<DashboardPayload> = {}): DashboardPayload {
 describe('toChartModel', () => {
   it('normalizes higher-is-better dimensions to shares summing to 1', () => {
     const { comparison } = toChartModel(payload())
-    const net = comparison.find((c) => c.key === 'net_takehome_ppp')!
+    const net = comparison.find((c) => c.key === 'net_takehome_usd')!
     expect(net.a! + net.b!).toBeCloseTo(1)
     expect(net.a).toBeGreaterThan(net.b!) // 70k vs 50k → A leads
     expect(net.aRaw).toBe(70000) // raw value preserved for tooltips
+  })
+
+  it('renders all six comparison spokes incl. cost of living', () => {
+    const { comparison } = toChartModel(payload())
+    expect(comparison.map((c) => c.key)).toEqual([
+      'net_takehome_usd',
+      'col_relative',
+      'visa_stability_score',
+      'pr_timeline_years',
+      'lottery_risk',
+      'partner_opportunity',
+    ])
+  })
+
+  it('shows the higher cost of living as the maximal spoke, the other to scale', () => {
+    const { comparison } = toChartModel(payload())
+    const col = comparison.find((c) => c.key === 'col_relative')!
+    expect(col.a).toBe(1) // A at 100 is the higher cost → maxed out at the rim
+    expect(col.b).toBeCloseTo(0.8) // B at 80 shown proportionally (80 / 100)
   })
 
   it('inverts lower-is-better dimensions so the smaller raw value scores higher', () => {
@@ -90,11 +110,11 @@ describe('toChartModel', () => {
     expect(lottery.b).toBeNull()
   })
 
-  it('exposes net_takehome_ppp (not gross) as the cross-country comparable figure', () => {
+  it('exposes net_annual_usd (not gross) as the cross-country comparable figure', () => {
     const { netComparison, incomeBreakdown } = toChartModel(payload())
     expect(netComparison).toEqual([
-      { country: 'US', netTakehomePpp: 70000 },
-      { country: 'UK', netTakehomePpp: 50000 },
+      { country: 'US', netUsd: 70000 },
+      { country: 'UK', netUsd: 50000 },
     ])
     // gross stays in local currency on the per-country breakdown only
     expect(incomeBreakdown.a.gross).toBe(100000)

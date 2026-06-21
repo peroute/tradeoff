@@ -30,11 +30,11 @@ _RISK_TYPES = {"lottery_risk", "extension_risk", "employer_switch", "partner_wor
 # (mirrors backend/pipeline/sample_payload.py).
 FACT_BUNDLE = {
     "bundle_a": {
-        "net_takehome_ppp": 97364.0,
+        "net_annual_usd": 97364.0,
         "visa_route": {"path_to_residency_years": 6},
     },
     "bundle_b": {
-        "net_takehome_ppp": 56500.0,
+        "net_annual_usd": 56500.0,
         "visa_route": {"path_to_residency_years": 4},
     },
 }
